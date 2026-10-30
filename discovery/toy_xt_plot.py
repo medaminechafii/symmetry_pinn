@@ -35,7 +35,7 @@ U = [u.copy()]
 
 # 2 --- time stepping loop ---
 save_every = 10
-for n in range(1,steps):
+for n in range(1,steps+1):
     u = rk4_step(u,dt,lambda u: 0*u)
     if n % save_every == 0:
         U.append(u.copy())
