@@ -49,7 +49,7 @@ def sample_jet(d, n_points, rng):
     # F2: draw n_points random integer indices for experiment, time and space.
     #     Hint: rng.integers(low, high, size) gives integers in [low, high).
     e  = rng.integers(0, K, size=n_points)          # TODO experiment index, in [0, K)
-    it = rng.integers(0, n_t, size=n_points)          # TODO time index, in [0, n_t)
+    it = rng.integers(0, n_t, size=n_points)        # TODO time index, in [0, n_t)
     ix = rng.integers(0, N, size=n_points)          # TODO space index, in [0, N)
 
     # F3: pick the values at those points. U[e, it, ix] picks one value per point
@@ -64,7 +64,7 @@ def evaluate(expr, jet):
     Constant columns (the two zero columns!) need the broadcast_to fix from toy lesson 2."""
     fun = sp.lambdify(JET, expr, "numpy")
     val = fun(jet["x"], jet["t"], jet["u"], jet["u_x"], jet["u_xx"], jet["u_xxx"])
-    return np.broadcast_to(np.asarray(val,dtype=float),jet["x"].shape).copy()                                    # TODO
+    return np.broadcast_to(np.asarray(val,dtype=float),jet["x"].shape).copy()    # TODO
 
 
 def build_matrix(cols, jet):
@@ -142,9 +142,9 @@ if __name__ == "__main__":
 
         # F8: build A from columns(g), normalise it, take the SVD (full_matrices=False),
         #     and count with count_by_gap.
-        A = build_matrix(columns(g),jet)                          # TODO
-        A_n, scale, is_zero = normalise(A)                 # TODO
-        _, s, Vt = np.linalg.svd(A_n, full_matrices=False)                            # TODO
+        A = build_matrix(columns(g),jet)                      # TODO
+        A_n, scale, is_zero = normalise(A)                    # TODO
+        _, s, Vt = np.linalg.svd(A_n, full_matrices=False)    # TODO
         n_null, jump = count_by_gap(s)                        # TODO
 
         print(f"\n=== {name}:  A shape {A.shape},  zero columns: {[names[i] for i in np.where(is_zero)[0]]}")
