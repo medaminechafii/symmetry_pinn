@@ -1,7 +1,7 @@
 """Week 3 Part C, step 2: the symbolic symmetry criterion, one column per basis field.
 
 Equation:  Delta = u_t + u u_x - nu u_xx - g(u) = 0
-Fill every `...` marked TODO (blanks C1 to C5), then run from the repo root:
+Run from the repo root:
 
     python -m discovery.criterion
 
@@ -31,7 +31,7 @@ def basis_fields():
         for m, mname in zip(MONOMIALS, MONO_NAMES):
             triple = [sp.Integer(0)] * 3
             # C1: put the monomial m in the right component of the triple
-            triple[comp] = m                                    # TODO (one line)
+            triple[comp] = m                                    
             fields.append(tuple(triple))
             names.append(f"{['xi', 'tau', 'phi'][comp]}:{mname}")
     return fields, names
@@ -44,14 +44,16 @@ def Dx(f):
     C2: one partial derivative per jet coordinate f can depend on, each multiplied by
         "the next derivative": u -> u_x, u_x -> u_xx, u_t -> u_xt.
         (Same pattern as Dx in toy lesson 2, with one more term for u_t.)"""
-    return sp.diff(f,x) + ux*sp.diff(f,u) + uxt*sp.diff(f,ut) + uxx*sp.diff(f,ux)                                    # TODO
+    return sp.diff(f,x) + ux*sp.diff(f,u) + uxt*sp.diff(f,ut) + uxx*sp.diff(f,ux)                                    
+    
 
 
 def Dt(f):
     """Total t-derivative, only applied to xi, tau, phi (functions of x, t, u only).
 
     C3: two terms. Which jet coordinate does d/dt turn u into?"""
-    return sp.diff(f,t) + ut*sp.diff(f,u) + uxt*sp.diff(f,ux)                                  # TODO
+    return sp.diff(f,t) + ut*sp.diff(f,u) + uxt*sp.diff(f,ux)                                  
+    
 
 
 # --- prolongation and criterion ---------------------------------------------------
@@ -64,10 +66,14 @@ def criterion(xi, tau, phi, g):
         phi^xx = D_x phi^x - u_xx D_x xi - u_xt D_x tau
         pr v(Delta) = phi^t + u phi^x + u_x phi - nu phi^xx - g'(u) phi
     Hint: g'(u) is sp.diff(g, u)."""
-    phi_x  = Dx(phi) - ux*Dx(xi) - ut*Dx(tau)     # TODO
-    phi_t  = Dt(phi) - ux*Dt(xi) - ut*Dt(tau)     # TODO
-    phi_xx = Dx(phi_x) - uxx*Dx(xi) - uxt*Dx(tau)   # TODO
-    return phi_t + u*phi_x + ux*phi - NU*phi_xx - sp.diff(g,u)*phi                                 # TODO
+    phi_x  = Dx(phi) - ux*Dx(xi) - ut*Dx(tau)     
+    
+    phi_t  = Dt(phi) - ux*Dt(xi) - ut*Dt(tau)     
+    
+    phi_xx = Dx(phi_x) - uxx*Dx(xi) - uxt*Dx(tau)   
+    
+    return phi_t + u*phi_x + ux*phi - NU*phi_xx - sp.diff(g,u)*phi                                 
+    
 
 
 def on_solutions(expr, g):
@@ -79,9 +85,12 @@ def on_solutions(expr, g):
                 so write this one out).
     Then substitute with expr.subs({uxt: rhs_x, ut: rhs}) and sp.expand the result
     (expanding makes true-symmetry columns simplify to exactly 0)."""
-    rhs   = -u*ux + NU*uxx + g                                   # TODO
-    rhs_x = -ux**2 - u*uxx + NU*uxxx + sp.diff(g, u)*ux          # TODO
-    return expr.subs({uxt: rhs_x, ut: rhs}).expand()                                    # TODO
+    rhs   = -u*ux + NU*uxx + g                                   
+    
+    rhs_x = -ux**2 - u*uxx + NU*uxxx + sp.diff(g, u)*ux          
+    
+    return expr.subs({uxt: rhs_x, ut: rhs}).expand()             
+    
 
 
 def columns(g):

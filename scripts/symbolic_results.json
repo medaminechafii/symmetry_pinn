@@ -1,0 +1,72 @@
+{
+ "phi_xx_formula_matches": true,
+ "burgers_dim": 5,
+ "burgers_generators_(xi,tau,phi)": [
+  [
+   "1",
+   "0",
+   "0"
+  ],
+  [
+   "0",
+   "1",
+   "0"
+  ],
+  [
+   "t",
+   "0",
+   "1"
+  ],
+  [
+   "-x",
+   "-2*t",
+   "u"
+  ],
+  [
+   "-t*x",
+   "-t**2",
+   "t*u - x"
+  ]
+ ],
+ "prolongations": {
+  "dx": [
+   "0",
+   "0",
+   "0"
+  ],
+  "dt": [
+   "0",
+   "0",
+   "0"
+  ],
+  "galilean": [
+   "0",
+   "-u_x",
+   "0"
+  ],
+  "scaling": [
+   "-2*u_x",
+   "-3*u_t",
+   "-3*u_xx"
+  ],
+  "projective": [
+   "-2*t*u_x + 1",
+   "-3*t*u_t - u - u_x*x",
+   "-3*t*u_xx"
+  ]
+ },
+ "criterion_check": {
+  "dx": "0",
+  "dt": "0",
+  "galilean": "0",
+  "scaling": "0",
+  "projective": "0"
+ },
+ "transformed_solution_residuals": {
+  "dx": "0",
+  "dt": "0",
+  "galilean": "0",
+  "scaling": "0",
+  "projective": "0"
+ }
+}

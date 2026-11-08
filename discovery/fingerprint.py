@@ -1,11 +1,8 @@
 """Week 3 Part C, steps 3-4: symmetry fingerprint on dense clean data.
 
-Builds the matrix A (points x 30 basis fields), runs the SVD, counts the symmetries and
-checks the known generators. Fill every `...` marked TODO (blanks F1 to F8), then run
-from the repo root:
-
+Builds the matrix A (points x 30 basis fields), runs the SVD, counts the symmetries andchecks the known generators. 
+Run from the repo root:
     python -m discovery.fingerprint
-
 Needs: data/dense_g0.npz and data/dense_cubic.npz (from your data generator),
        discovery/criterion.py (all its self-checks passing), discovery/__init__.py (empty file).
 """
@@ -35,7 +32,7 @@ def spectral_derivative(U, k, order):
         and keep the real part."""
     f_hat = np.fft.fft(U, axis=-1)
     df_hat = (1j * k) ** order * f_hat
-    return np.fft.ifft(df_hat, axis = -1).real                                  # TODO
+    return np.fft.ifft(df_hat, axis = -1).real                                  
 
 
 # --- step 3b: jet values at random points --------------------------------------------
@@ -48,14 +45,14 @@ def sample_jet(d, n_points, rng):
 
     # F2: draw n_points random integer indices for experiment, time and space.
     #     Hint: rng.integers(low, high, size) gives integers in [low, high).
-    e  = rng.integers(0, K, size=n_points)          # TODO experiment index, in [0, K)
-    it = rng.integers(0, n_t, size=n_points)        # TODO time index, in [0, n_t)
-    ix = rng.integers(0, N, size=n_points)          # TODO space index, in [0, N)
+    e  = rng.integers(0, K, size=n_points)          # experiment index, in [0, K)
+    it = rng.integers(0, n_t, size=n_points)        # time index, in [0, n_t)
+    ix = rng.integers(0, N, size=n_points)          # space index, in [0, N)
 
     # F3: pick the values at those points. U[e, it, ix] picks one value per point
     #     (NumPy "fancy indexing": the three index arrays are read in parallel).
     return {"x": x[ix], "t": t[it], "u": U[e, it, ix],
-            "u_x": Ux[e,it,ix], "u_xx": Uxx[e,it,ix], "u_xxx": Uxxx[e,it,ix]}    # TODO
+            "u_x": Ux[e,it,ix], "u_xx": Uxx[e,it,ix], "u_xxx": Uxxx[e,it,ix]}    
 
 
 # --- step 3c: evaluate the symbolic columns -------------------------------------------
@@ -64,7 +61,7 @@ def evaluate(expr, jet):
     Constant columns (the two zero columns!) need the broadcast_to fix from toy lesson 2."""
     fun = sp.lambdify(JET, expr, "numpy")
     val = fun(jet["x"], jet["t"], jet["u"], jet["u_x"], jet["u_xx"], jet["u_xxx"])
-    return np.broadcast_to(np.asarray(val,dtype=float),jet["x"].shape).copy()    # TODO
+    return np.broadcast_to(np.asarray(val,dtype=float),jet["x"].shape).copy()   
 
 
 def build_matrix(cols, jet):
@@ -80,9 +77,9 @@ def normalise(A):
     F5: compute the column norms, detect zero columns with a RELATIVE test
         (norm < 1e-12 * largest norm), build `scale` = norms with 1 in the zero slots
         (np.where is useful), and divide."""
-    norms   = np.linalg.norm(A, axis=0)                                 # TODO
-    is_zero = norms < 1e-12 * np.max(norms)                                 # TODO
-    scale   = np.where(is_zero, 1, norms)                                 # TODO
+    norms   = np.linalg.norm(A, axis=0)                                 
+    is_zero = norms < 1e-12 * np.max(norms)                                 
+    scale   = np.where(is_zero, 1, norms)                                 
     return A / scale, scale, is_zero
 
 
@@ -114,9 +111,9 @@ def vec(xi=None, tau=None, phi=None):
 KNOWN = {
     "d/dx":       vec(xi={"1": 1}),
     "d/dt":       vec(tau={"1": 1}),
-    "Galilean":   vec(xi={"t": 1}, phi={"1": 1}),                            # TODO  t d/dx + d/du
-    "scaling":    vec(xi={"x": 1}, tau={"t": 2}, phi={"u": -1}),             # TODO  x d/dx + 2t d/dt - u d/du
-    "projective": vec(xi={"xt": 1}, tau={"t^2": 1}, phi={"x": 1,"tu": -1}),   # TODO  xt d/dx + t^2 d/dt + (x - tu) d/du
+    "Galilean":   vec(xi={"t": 1}, phi={"1": 1}),                            #   t d/dx + d/du
+    "scaling":    vec(xi={"x": 1}, tau={"t": 2}, phi={"u": -1}),             #   x d/dx + 2t d/dt - u d/du
+    "projective": vec(xi={"xt": 1}, tau={"t^2": 1}, phi={"x": 1,"tu": -1}),   #   xt d/dx + t^2 d/dt + (x - tu) d/du
 }
 
 
@@ -126,8 +123,8 @@ def projection_residual(w, Vt, n_null, scale):
     F7: the null rows of Vt live in the coordinates of the NORMALISED matrix. Since
         A c = A_n (scale * c), first convert w to those coordinates, then project onto the
         last n_null rows of Vt as in toy lesson 2, Blank 6."""
-    w_n = w * scale                                     # TODO
-    N   = Vt[-n_null:]                                  # TODO
+    w_n = w * scale                                     
+    N   = Vt[-n_null:]                                  
     return np.linalg.norm(w_n - N.T @ (N @ w_n)) / np.linalg.norm(w_n)
 
 
@@ -142,10 +139,10 @@ if __name__ == "__main__":
 
         # F8: build A from columns(g), normalise it, take the SVD (full_matrices=False),
         #     and count with count_by_gap.
-        A = build_matrix(columns(g),jet)                      # TODO
-        A_n, scale, is_zero = normalise(A)                    # TODO
-        _, s, Vt = np.linalg.svd(A_n, full_matrices=False)    # TODO
-        n_null, jump = count_by_gap(s)                        # TODO
+        A = build_matrix(columns(g),jet)                       
+        A_n, scale, is_zero = normalise(A)                     
+        _, s, Vt = np.linalg.svd(A_n, full_matrices=False)     
+        n_null, jump = count_by_gap(s)                         
 
         print(f"\n=== {name}:  A shape {A.shape},  zero columns: {[names[i] for i in np.where(is_zero)[0]]}")
         print("smallest 8 singular values:", np.array2string(s[-8:], precision=2))

@@ -17,7 +17,7 @@ def evaluate7(expr, jet):
     Constant columns (the two zero columns!) need the broadcast_to fix from toy lesson 2."""
     fun = sp.lambdify(JET7, expr, "numpy")
     val = fun(*(jet[k] for k in JET7_KEY))
-    return np.broadcast_to(np.asarray(val,dtype=float),jet["x"].shape).copy()    # TODO
+    return np.broadcast_to(np.asarray(val,dtype=float),jet["x"].shape).copy()    
 
 def clean_jet(d, g, rng):
     jet = sample_jet(d, N_POINTS, rng)
