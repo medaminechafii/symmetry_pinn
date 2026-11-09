@@ -50,3 +50,21 @@ def plot_error_maps(x, t, truth, pred, x_obs=None, t_obs=None, path=None):
         ax.set_xlabel("x"); ax.set_ylabel("t")
     if path: fig.savefig(path, dpi=150)
     return fig
+
+def plot_training_oracle(history, adam_steps, lam, noise_var=None, path=None):
+    """history = [(total, data, pde), ...] from pinn_oracle.train_pinn."""
+    h = np.array(history)
+    fig, ax = plt.subplots(figsize=(6.8, 3.8), constrained_layout=True)
+    ax.semilogy(h[:, 1], lw=1.0, color="C0", label="data MSE")
+    ax.semilogy(h[:, 2], lw=1.0, color="C1", label="PDE residual MSE")
+    ax.semilogy(h[:, 0], lw=1.0, color="k", alpha=0.6, label=f"total (lam={lam:g})")
+    ax.axvline(adam_steps, color="C3", ls=":", lw=1.5)
+    ax.text(adam_steps, h[0, 1], " L-BFGS", color="C3", va="top", fontsize=9)
+    if noise_var is not None:
+        ax.axhline(noise_var, color="C2", ls="--", lw=1.3)
+        ax.text(0, noise_var, " noise variance", color="C2", va="bottom", fontsize=9)
+    ax.set_xlabel("loss evaluation"); ax.set_ylabel("loss")
+    ax.set_title("oracle PINN training")
+    ax.legend(fontsize=8); ax.grid(alpha=0.3, which="both")
+    if path: fig.savefig(path, dpi=150)
+    return fig
