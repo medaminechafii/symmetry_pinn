@@ -68,3 +68,22 @@ def plot_training_oracle(history, adam_steps, lam, noise_var=None, path=None):
     ax.legend(fontsize=8); ax.grid(alpha=0.3, which="both")
     if path: fig.savefig(path, dpi=150)
     return fig
+def plot_grad_norms(grad_his, path):
+    """Plot the gradient norms of the data and PDE losses over training steps."""
+    if not grad_his:
+        print("No gradient history to plot.")
+        return
+    steps, gd_norms, gr_norms, gd_gr_ratios = zip(*grad_his)
+    plt.figure(figsize=(8, 5))
+    plt.plot(steps, gd_norms, label='Data Loss Gradient Norm', color='blue', linestyle='-')
+    plt.plot(steps, gr_norms, label='PDE Loss Gradient Norm', color='orange', linestyle='-')
+    plt.plot(steps, gd_gr_ratios, label='Ratio (Data/PDE)', color='green',linestyle='--')
+    plt.yscale('log')
+    plt.xlabel('Training Steps')
+    plt.ylabel('Gradient Norm (log scale)')
+    plt.title('Gradient Norms of Data and PDE Losses During Training')
+    plt.legend()
+    plt.grid(True)
+    plt.tight_layout()
+    plt.savefig(path)
+    plt.close()

@@ -11,19 +11,28 @@ DATA = ROOT / "data"
 RESULTS = ROOT / "results"
 MODELS = ROOT / "models"; MODELS.mkdir(exist_ok=True)
 NU,T = 0.1, 2.0
+seed = 0
 
 class Surrogate(torch.nn.Module):
-    def __init__(self, width=64, depth=3):
+    def __init__(self, width=64, depth=3, K=1):
         super().__init__()
-        layers, n_in = [],3
+        self.K = K                                   # Fourier features: sin(jx), cos(jx), j = 1..K
+        layers, n_in = [], 2*K + 1
         for _ in range(depth):
             layers += [torch.nn.Linear(n_in, width), torch.nn.Tanh()]
             n_in = width
         layers += [torch.nn.Linear(n_in,1)]
         self.net = torch.nn.Sequential(*layers)
     def forward(self, x, t):
-        feats = self.net(torch.stack([torch.sin(x), torch.cos(x), t], dim=-1))
+        f = []
+        for j in range(1, self.K + 1):
+            f += [torch.sin(j*x), torch.cos(j*x)]
+        feats = self.net(torch.stack(f + [t], dim=-1))
         return feats.squeeze(-1)
+def variant_tag(nc=2000, cos=False, adam=4000, K=1):
+    """File-name part for every non-default training option (default run -> empty, old names stay valid)."""
+    return (f"_nc{nc}" if nc != 2000 else "") + ("_cos" if cos else "") + \
+           (f"_ad{adam}" if adam != 4000 else "") + (f"_fK{K}" if K != 1 else "")
 def jet( model,x, t):
     """Return u, u_x, u_t, u_xx evaluated at (x, t). x and t need requires_grad."""
     u = model(x,t)
@@ -32,8 +41,9 @@ def jet( model,x, t):
     u_xx = torch.autograd.grad(u_x, x, grad_outputs=torch.ones_like(u_x), create_graph=True)[0]
     u_xt = torch.autograd.grad(u_x, t, grad_outputs=torch.ones_like(u_x), create_graph=True)[0]
     return u,u_x,u_t,u_xx,u_xt
-def train(x_obs, t_obs, u_obs, adam_steps=4000, verbose= True):
+def train(x_obs, t_obs, u_obs, seed=0, adam_steps=4000, verbose= True):
     history = []
+    torch.manual_seed(seed)
     model = Surrogate()
     opt = torch.optim.Adam(model.parameters(),lr=1e-3)
     for step in range(adam_steps):
@@ -95,8 +105,8 @@ if __name__== "__main__":
     print(f"{name} N_obs={n_obs} sigma={sig_pct}%  -> {len(u_obs)} points for experiment {k}")
     # Train the surrogate model
     t0 = time.time()
-    model,final,history = train(x_obs,t_obs,u_obs)
-    torch.save(model.state_dict(), MODELS / f"{name}_N{n_obs}_s{sig_pct}_k{k}.pt")
+    model,final,history = train(x_obs,t_obs,u_obs, seed=seed)
+    torch.save(model.state_dict(), MODELS / f"{name}_N{n_obs}_s{sig_pct}_k{k}_seed{seed}.pt")
 
     print(f"Training completed in {time.time()-t0:.1f} seconds, final loss: {final:.3e}")
 
