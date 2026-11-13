@@ -10,11 +10,14 @@ G_TORCH = {"g0": lambda u: torch.zeros_like(u), "cubic": lambda u: -u**3}
 G_TORCH.update({f"cubic_{tag}": lambda u, e=eps: -u**3 + e*u for tag, eps in EPS.items()})
 
 def train_pinn(x_obs, t_obs, u_obs, g_fun, lam=1.0, n_colloc=2000,seed=0,
-               adam_steps=4000, verbose=True, cos=False, K=1):
+               adam_steps=4000, verbose=True, cos=False, K=1,learn_nu = False,nu0 = 0.05):
     history = []
     grad_his = []
     torch.manual_seed(seed)
     model = Surrogate(K=K)
+    log_nu = torch.tensor(float(np.log(nu0)),requires_grad=True) if learn_nu else None
+    def nu_now():
+        return torch.exp(log_nu) if learn_nu else NU
     rng = np.random.default_rng(seed)
     xc = torch.tensor(rng.uniform(0.0,2*np.pi , n_colloc), requires_grad=True)
     tc = torch.tensor(rng.uniform(0.0, T,   n_colloc), requires_grad=True)
@@ -22,16 +25,17 @@ def train_pinn(x_obs, t_obs, u_obs, g_fun, lam=1.0, n_colloc=2000,seed=0,
     def losses():
         data = torch.mean((model(x_obs, t_obs) - u_obs)**2)
         u, u_x, u_t, u_xx, _ = jet(model, xc, tc)
-        res  = u_t + u*u_x - NU*u_xx - g_fun(u)          # P1: the PDE residual
+        res  = u_t + u*u_x - nu_now()*u_xx - g_fun(u)          # P1: the PDE residual
         return data, torch.mean(res**2)
     def grad_norms(model,d,r):
-        params = list(model.parameters())
+        params = list(model.parameters()) 
         gd = torch.autograd.grad(d,params,retain_graph=True)
         gr = torch.autograd.grad(r,params,retain_graph=True)
         norm = lambda gs: torch.sqrt(sum((g**2).sum() for g in gs)).item()
 
         return norm(gd), norm(gr)
-    opt = torch.optim.Adam(model.parameters(), lr=1e-3)
+    all_params = list(model.parameters()) + ([log_nu] if learn_nu else [])
+    opt = torch.optim.Adam(all_params, lr=1e-3)
     sched = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=adam_steps, eta_min=1e-5) if cos else None
     for step in range(adam_steps):
         d, r = losses()
@@ -46,7 +50,7 @@ def train_pinn(x_obs, t_obs, u_obs, g_fun, lam=1.0, n_colloc=2000,seed=0,
         if verbose and step % 500 == 0:
             print(f"  {step:5d}  data {d.item():.3e}   pde {r.item():.3e}")
 
-    opt = torch.optim.LBFGS(model.parameters(), max_iter=2000,
+    opt = torch.optim.LBFGS(all_params, max_iter=2000,
                             line_search_fn="strong_wolfe",tolerance_grad=1e-14, tolerance_change=1e-12)
     def closure():
         opt.zero_grad()
@@ -60,6 +64,7 @@ def train_pinn(x_obs, t_obs, u_obs, g_fun, lam=1.0, n_colloc=2000,seed=0,
     final = (d + lam*r).item()
 
     print(f"  final  data {d.item():.3e}   pde {r.item():.3e}")
+    model.nu_hat = float(nu_now().detach()) if learn_nu else NU
     return model, final, history, grad_his
 
 if __name__ == "__main__":
@@ -82,9 +87,13 @@ if __name__ == "__main__":
     ap.add_argument("--plots", action="store_true",
                     help="also save snapshots, error maps and gradient-norm plots (default: training curve only)")
     ap.add_argument("--loss-g" , choices=list(G_TORCH),default=None,help="g loss = -u**3 with default same as delta)")
+    ap.add_argument("--nu",type=int, default=0.1)
+    ap.add_argument("--learn-nu", type=float, default=None,
+                help="___ (hint: learn nu, starting at this value; default = nu fixed at the truth)")
     args = ap.parse_args()
     steps = args.steps
     smoke = args.smoke
+    learn_nu = args.learn_nu
     var = variant_tag(args.ncolloc, args.cos, steps, args.feat)
     RESULTS_O = RESULTS / "oracle"; RESULTS_O.mkdir(exist_ok=True)
     RUNS = RESULTS_O / "runs"; RUNS.mkdir(exist_ok=True)      # one .npz per run: arrays + scalars
@@ -99,7 +108,8 @@ if __name__ == "__main__":
                         s = np.load(DATA / f"sparse_{name}_N{n_obs}_s{sig}.npz")
                         for k in args.k:
                             mis = f"_loss{args.loss_g}" if args.loss_g else ""
-                            stem = f"oracle_{name}_N{n_obs}_s{sig}_lam{tag}_k{k}{var}{mis}_seed{seed}"
+                            nutag = f"_nu{args.learn_nu}" if args.learn_nu is not None else ""
+                            stem = f"oracle_{name}_N{n_obs}_s{sig}_lam{tag}_k{k}{var}{mis}{nutag}_seed{seed}"
                             if not smoke and (MODELS / f"{stem}.pt").exists():
                                 print(f"skip {stem} (exists)"); continue
                             sel = s["exp_id"] == k
@@ -108,7 +118,8 @@ if __name__ == "__main__":
                             model, final, history, grad_his = train_pinn(
                                 torch.tensor(xo), torch.tensor(to), torch.tensor(uo),
                                 g_loss, lam=lam, adam_steps=steps, seed=seed, verbose=False,
-                                n_colloc=args.ncolloc, cos=args.cos, K=args.feat)
+                                n_colloc=args.ncolloc, cos=args.cos, K=args.feat,learn_nu = learn_nu is not None,
+                                nu0 = learn_nu if learn_nu is not None else 0.05)
                             if not smoke:
                                 torch.save(model.state_dict(), MODELS / f"{stem}.pt")
                             x, t, truth = dense_truth(name, k)
@@ -131,7 +142,11 @@ if __name__ == "__main__":
                                  "data_over_noise": data_final/float(noise_var),
                                  "lbfgs_evals": n_lbfgs, "lbfgs_ran": bool(n_lbfgs > 5),
                                  "underfit": bool(data_final > 3*noise_var),
-                                 "loss_g": args.loss_g or name
+                                 "loss_g": args.loss_g or name,
+                                 "learn_nu": args.learn_nu is not None,
+                                 "nu0": args.learn_nu,
+                                 "nu_hat": model.nu_hat, 
+                                 "nu_err": abs(model.nu_hat - NU) / NU
                                  }
                             if not m["lbfgs_ran"] or m["underfit"]:
                                 print(f"   FLAG: lbfgs_ran={m['lbfgs_ran']} data/noise={m['data_over_noise']:.1f}")
