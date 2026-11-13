@@ -10,6 +10,9 @@ SIGMAS = [0,0.001,0.003,0.01,0.03,0.1]
 NOISY = ["u", "u_x", "u_t", "u_xx", "u_xt"]
 JET7 = [x,t,u,ux,ut,uxx,uxt]
 JET7_KEY = ["x","t","u","u_x","u_t","u_xx","u_xt"]
+EPS = {"e001":0.01,"e003":0.03,"e01":0.1,"e03":0.3}
+NEAR_CASES = {f"cubic_{tag}":(-u**3+u*sp.Rational(str(eps)),2) for tag,eps in EPS.items()}
+ALL_CASES = {**CASES,**NEAR_CASES}
 def column_raw(g):
     return [criterion(*f,g) for f in basis_fields()[0]]
 def evaluate7(expr, jet):

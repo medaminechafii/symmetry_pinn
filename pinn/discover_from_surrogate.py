@@ -2,7 +2,7 @@ import numpy as np
 import sympy as sp
 import torch
 import matplotlib.pyplot as plt
-from discovery.noise_gap import column_raw, evaluate7, gap_at, JET7_KEY, CASES
+from discovery.noise_gap import column_raw, evaluate7, gap_at, JET7_KEY, CASES,ALL_CASES
 from discovery.fingerprint import  normalise, count_by_gap, KNOWN, projection_residual
 from pinn.surrogate import Surrogate, jet, MODELS, NU, T, train, DATA, variant_tag
 
@@ -71,7 +71,7 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("mode", nargs="?", choices=["oracle"])
     ap.add_argument("lams", nargs="*", help="lambda values as in the file names, e.g. 1e-4 0.1 1")
-    ap.add_argument("--name", nargs="+", choices=list(CASES), default=list(CASES))
+    ap.add_argument("--name", nargs="+", choices=list(ALL_CASES), default=list(CASES))
     ap.add_argument("--n", nargs="+", type=int, default=[50, 200, 1000])
     ap.add_argument("--sig", nargs="+", type=int, default=[1, 3])
     ap.add_argument("--steps", type=int, default=4000, help="Adam steps the models were trained with")
@@ -79,6 +79,7 @@ if __name__ == "__main__":
     ap.add_argument("--cos", action="store_true")
     ap.add_argument("--feat", type=int, default=1)
     ap.add_argument("--seed", nargs="+", type=int, default=None)   # oracle: default 0; data-only: none = legacy names
+    ap.add_argument("--loss-g", choices=list(CASES),default=None,help="the g that was in the pinn loss, must match")
     args = ap.parse_args()
     oracle = args.mode == "oracle"
     lams = (args.lams or ["1e-4"]) if oracle else [None]
@@ -86,11 +87,12 @@ if __name__ == "__main__":
     for lam in lams:
         for seed in seeds:
             prefix, tag = ("oracle_", f"_lam{lam}") if oracle else ("", "")
-            suffix = (variant_tag(args.ncolloc, args.cos, args.steps, args.feat) if oracle else "") + (f"_seed{seed}" if seed is not None else "")
+            mis = f"_loss{args.loss_g}" if args.loss_g else ""
+            suffix = (variant_tag(args.ncolloc, args.cos, args.steps, args.feat) + mis if oracle else "") + (f"_seed{seed}" if seed is not None else "")            
             if oracle or seed is not None:
                 print(f"--- {'oracle lam=' + lam if oracle else 'data-only'}  seed={seed}")
             for name in args.name:
-                g, k_exp = CASES[name]
+                g, k_exp = ALL_CASES[name]
                 cols = column_raw(g)
                 for n_obs in args.n:
                     for sig in args.sig:

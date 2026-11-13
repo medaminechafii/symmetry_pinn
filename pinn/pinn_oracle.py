@@ -2,10 +2,12 @@ import json
 import numpy as np, torch
 from pinn.surrogate import Surrogate, jet, MODELS, DATA, RESULTS, NU, T, variant_tag
 from pinn.discover_from_surrogate import pde_residual
-from discovery.noise_gap import CASES
+from discovery.noise_gap import CASES,ALL_CASES,EPS
 from pinn.surrogate import dense_truth, surrogate_jets, rel_error
 
 G_TORCH = {"g0": lambda u: torch.zeros_like(u), "cubic": lambda u: -u**3}
+
+G_TORCH.update({f"cubic_{tag}": lambda u, e=eps: -u**3 + e*u for tag, eps in EPS.items()})
 
 def train_pinn(x_obs, t_obs, u_obs, g_fun, lam=1.0, n_colloc=2000,seed=0,
                adam_steps=4000, verbose=True, cos=False, K=1):
@@ -67,7 +69,7 @@ if __name__ == "__main__":
     # python -m pinn.pinn_oracle 1e-4 0.1 1 --name g0 --n 1000 --sig 1 --k 0 --seed 0
     ap = argparse.ArgumentParser()
     ap.add_argument("lams", nargs="*", help="lambda values, written as in the file names (default 1e-4)")
-    ap.add_argument("--name", nargs="+", choices=list(CASES), default=list(CASES))
+    ap.add_argument("--name", nargs="+", choices=list(ALL_CASES), default=list(CASES))
     ap.add_argument("--n", nargs="+", type=int, default=[50, 200, 1000],help="data points 50,200 and 1000 as default")
     ap.add_argument("--sig", nargs="+", type=int, default=[1, 3],help="sigma for the noise either 1 and 3 as default")
     ap.add_argument("--k", nargs="+", type=int, default=[0, 1, 2],help="the number of the experiment depending on k 0,1 and 2 are the only experiments available")
@@ -79,6 +81,7 @@ if __name__ == "__main__":
     ap.add_argument("--smoke", action="store_true", help="quick test: saves no models, runs/ or metrics")
     ap.add_argument("--plots", action="store_true",
                     help="also save snapshots, error maps and gradient-norm plots (default: training curve only)")
+    ap.add_argument("--loss-g" , choices=list(G_TORCH),default=None,help="g loss = -u**3 with default same as delta)")
     args = ap.parse_args()
     steps = args.steps
     smoke = args.smoke
@@ -90,19 +93,21 @@ if __name__ == "__main__":
         lam = float(tag)
         for seed in args.seed:
             for name in args.name:
-                g_sym = CASES[name][0]
+                g_sym = ALL_CASES[name][0]
                 for n_obs in args.n:
                     for sig in args.sig:
                         s = np.load(DATA / f"sparse_{name}_N{n_obs}_s{sig}.npz")
                         for k in args.k:
-                            stem = f"oracle_{name}_N{n_obs}_s{sig}_lam{tag}_k{k}{var}_seed{seed}"
+                            mis = f"_loss{args.loss_g}" if args.loss_g else ""
+                            stem = f"oracle_{name}_N{n_obs}_s{sig}_lam{tag}_k{k}{var}{mis}_seed{seed}"
                             if not smoke and (MODELS / f"{stem}.pt").exists():
                                 print(f"skip {stem} (exists)"); continue
                             sel = s["exp_id"] == k
                             xo, to, uo = s["x_obs"][sel], s["t_obs"][sel], s["u_obs"][sel]
+                            g_loss = G_TORCH[args.loss_g or name]
                             model, final, history, grad_his = train_pinn(
                                 torch.tensor(xo), torch.tensor(to), torch.tensor(uo),
-                                G_TORCH[name], lam=lam, adam_steps=steps, seed=seed, verbose=False,
+                                g_loss, lam=lam, adam_steps=steps, seed=seed, verbose=False,
                                 n_colloc=args.ncolloc, cos=args.cos, K=args.feat)
                             if not smoke:
                                 torch.save(model.state_dict(), MODELS / f"{stem}.pt")
@@ -115,7 +120,8 @@ if __name__ == "__main__":
                             with torch.no_grad():
                                 data_final = torch.mean((model(torch.tensor(xo), torch.tensor(to)) - torch.tensor(uo))**2).item()
                             n_lbfgs = len(history) - steps               # closure calls in the L-BFGS stage
-                            m = {"name": name, "N": n_obs, "sig": sig, "k": k, "lam": lam, "lam_tag": tag,
+                            m = {
+                                "name": name, "N": n_obs, "sig": sig, "k": k, "lam": lam, "lam_tag": tag,
                                  "seed": seed, "steps": steps, "ncolloc": args.ncolloc, "cos": args.cos, "feat": args.feat, "D": float(pde_residual(pred, g_sym)),
                                  "err_u": float(rel_error(pred["u"], truth["u"])),
                                  "err_u_x": float(rel_error(pred["u_x"], truth["u_x"])),
@@ -124,7 +130,9 @@ if __name__ == "__main__":
                                  "data_final": data_final, "noise_var": float(noise_var),
                                  "data_over_noise": data_final/float(noise_var),
                                  "lbfgs_evals": n_lbfgs, "lbfgs_ran": bool(n_lbfgs > 5),
-                                 "underfit": bool(data_final > 3*noise_var)}
+                                 "underfit": bool(data_final > 3*noise_var),
+                                 "loss_g": args.loss_g or name
+                                 }
                             if not m["lbfgs_ran"] or m["underfit"]:
                                 print(f"   FLAG: lbfgs_ran={m['lbfgs_ran']} data/noise={m['data_over_noise']:.1f}")
                             if not smoke:

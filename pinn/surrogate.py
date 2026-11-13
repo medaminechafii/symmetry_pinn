@@ -74,7 +74,12 @@ def dense_truth(name,k):
     x, t, U = d["x"], d["t"], d["U"][k]
     kk = np.fft.fftfreq(len(x), d=x[1]-x[0]) * 2 * np.pi
     Ux, Uxx = (spectral_derivative(U,kk,m) for m in (1,2))
-    g = {"g0": np.zeros_like(U), "cubic": -U**3}[name]
+    if name in ("g0", "cubic"):
+        g = {"g0": np.zeros_like(U), "cubic": -U**3}[name]
+    else:
+        from discovery.noise_gap import EPS
+        eps = EPS[name.split("_", 1)[1]]
+        g = -U**3 + eps*U
     Ut = -U*Ux + NU*Uxx + g
     return x,t,{"u": U, "u_x": Ux, "u_t": Ut, "u_xx": Uxx} 
 def surrogate_jets(model,x,t,chunk=4000):
