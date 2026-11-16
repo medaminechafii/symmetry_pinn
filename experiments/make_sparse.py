@@ -9,7 +9,7 @@ RESULTS.mkdir(exist_ok=True)
 
 CASES  = ["g0", "cubic"]
 N_OBS  = [50, 200, 1000]
-SIGMAS = [0.01, 0.03]
+SIGMAS = [0.0, 0.01, 0.03]
 
 
 def sample_experiment(x, t, Uk, n_obs, sigma, rng):
@@ -45,7 +45,7 @@ if __name__ == "__main__":
                 u_obs   = np.concatenate([p[3] for p in parts])
                 exp_id  = np.repeat(np.arange(K), [len(p[0]) for p in parts])
 
-                out = DATA / f"sparse_{name}_N{n_obs}_s{round(100*sigma)}.npz"
+                out = DATA / f"sparse_{name}_N{n_obs}_s{100*sigma:g}.npz"
                 np.savez(out, x_obs=x_obs, t_obs=t_obs, u_obs=u_obs, u_clean=u_clean,
                          exp_id=exp_id, nu=nu, g=name, N_obs=n_obs, noise=sigma, seed=seed)
                 print(f"{out.name}: {len(u_obs)} points, "
