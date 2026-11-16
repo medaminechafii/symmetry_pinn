@@ -149,13 +149,15 @@ if __name__ == "__main__":
                                  "nu_err": abs(model.nu_hat - NU) / NU
                                  }
                             if not m["lbfgs_ran"] or m["underfit"]:
-                                print(f"   FLAG: lbfgs_ran={m['lbfgs_ran']} data/noise={m['data_over_noise']:.1f}")
+                                ratio = m["data_over_noise"]
+                                ratio_txt = f"{ratio:.1f}" if ratio is not None else "n/a"
+                                print(f"   FLAG: lbfgs_ran={m['lbfgs_ran']} data/noise={ratio_txt}")
                             if not smoke:
                                 np.savez(RUNS / f"{stem}.npz", history=np.array(history),
                                          grad_his=np.array(grad_his), adam_steps=steps, **m)
                                 with open(METRICS, "a") as f:
                                     f.write(json.dumps(m) + "\n")
-                            plot_training_oracle(history, steps, lam, noise_var, RESULTS_O/f"training_{out}.png")
+                            plot_training_oracle(history, steps, lam, noise_var if noise_var > 0 else None, RESULTS_O/f"training_{out}.png")
                             if args.plots:
                                 plot_snapshots(x, t, truth, pred, path=RESULTS_O/f"snapshots_{out}.png")
                                 plot_error_maps(x, t, truth, pred, x_obs=xo, t_obs=to, path=RESULTS_O/f"error_maps_{out}.png")
