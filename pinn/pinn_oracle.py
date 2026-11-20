@@ -4,13 +4,19 @@ from pinn.surrogate import Surrogate, jet, MODELS, DATA, RESULTS, NU, T, variant
 from pinn.discover_from_surrogate import pde_residual
 from discovery.noise_gap import CASES,ALL_CASES,EPS
 from pinn.surrogate import dense_truth, surrogate_jets, rel_error
+from pinn.learned_g import PolyG,MLPG
 
 G_TORCH = {"g0": lambda u: torch.zeros_like(u), "cubic": lambda u: -u**3}
 
 G_TORCH.update({f"cubic_{tag}": lambda u, e=eps: -u**3 + e*u for tag, eps in EPS.items()})
 
 def train_pinn(x_obs, t_obs, u_obs, g_fun, lam=1.0, n_colloc=2000,seed=0,
-               adam_steps=4000, verbose=True, cos=False, K=1,learn_nu = False,nu0 = 0.05):
+               adam_steps=4000, verbose=True, cos=False, K=1,learn_nu = False,nu0 = 0.05,g_model=None):
+    if g_model is not None:
+        torch.manual_seed(seed)
+        if isinstance(g_model, str):
+            g_model = {"poly": PolyG, "MLP": MLPG}[g_model]()
+        g_fun = g_model
     history = []
     grad_his = []
     torch.manual_seed(seed)
@@ -34,7 +40,7 @@ def train_pinn(x_obs, t_obs, u_obs, g_fun, lam=1.0, n_colloc=2000,seed=0,
         norm = lambda gs: torch.sqrt(sum((g**2).sum() for g in gs)).item()
 
         return norm(gd), norm(gr)
-    all_params = list(model.parameters()) + ([log_nu] if learn_nu else [])
+    all_params = list(model.parameters()) + ([log_nu] if learn_nu else []) + (list(g_model.parameters()) if g_model is not None else [])
     opt = torch.optim.Adam(all_params, lr=1e-3)
     sched = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=adam_steps, eta_min=1e-5) if cos else None
     for step in range(adam_steps):
@@ -65,6 +71,7 @@ def train_pinn(x_obs, t_obs, u_obs, g_fun, lam=1.0, n_colloc=2000,seed=0,
 
     print(f"  final  data {d.item():.3e}   pde {r.item():.3e}")
     model.nu_hat = float(nu_now().detach()) if learn_nu else NU
+    model.extras = {"g_model":g_model}
     return model, final, history, grad_his
 
 if __name__ == "__main__":
@@ -90,6 +97,7 @@ if __name__ == "__main__":
     ap.add_argument("--nu",type=int, default=0.1)
     ap.add_argument("--learn-nu", type=float, default=None,
                 help="___ (hint: learn nu, starting at this value; default = nu fixed at the truth)")
+    ap.add_argument("--g-model",choices=["poly","MLP"],default=None)
     args = ap.parse_args()
     steps = args.steps
     smoke = args.smoke
@@ -97,7 +105,8 @@ if __name__ == "__main__":
     var = variant_tag(args.ncolloc, args.cos, steps, args.feat)
     RESULTS_O = RESULTS / "oracle"; RESULTS_O.mkdir(exist_ok=True)
     RUNS = RESULTS_O / "runs"; RUNS.mkdir(exist_ok=True)      # one .npz per run: arrays + scalars
-    METRICS = RESULTS_O / "metrics.jsonl"                     # one JSON line per run, append-only
+    METRICS = RESULTS_O / "metrics.jsonl" 
+                        # one JSON line per run, append-only
     for tag in (args.lams or ["1e-4"]):
         lam = float(tag)
         for seed in args.seed:
@@ -109,19 +118,24 @@ if __name__ == "__main__":
                         for k in args.k:
                             mis = f"_loss{args.loss_g}" if args.loss_g else ""
                             nutag = f"_nu{args.learn_nu}" if args.learn_nu is not None else ""
-                            stem = f"oracle_{name}_N{n_obs}_s{sig}_lam{tag}_k{k}{var}{mis}{nutag}_seed{seed}"
+                            g_tag = f"_{args.g_model}" if args.g_model is not None else ""
+                            stem = f"oracle_{name}_N{n_obs}_s{sig}_lam{tag}_k{k}{var}{mis}{nutag}{g_tag}_seed{seed}"
                             if not smoke and (MODELS / f"{stem}.pt").exists():
                                 print(f"skip {stem} (exists)"); continue
                             sel = s["exp_id"] == k
                             xo, to, uo = s["x_obs"][sel], s["t_obs"][sel], s["u_obs"][sel]
                             g_loss = G_TORCH[args.loss_g or name]
+                            g_model = args.g_model
                             model, final, history, grad_his = train_pinn(
                                 torch.tensor(xo), torch.tensor(to), torch.tensor(uo),
                                 g_loss, lam=lam, adam_steps=steps, seed=seed, verbose=False,
                                 n_colloc=args.ncolloc, cos=args.cos, K=args.feat,learn_nu = learn_nu is not None,
-                                nu0 = learn_nu if learn_nu is not None else 0.05)
+                                nu0 = learn_nu if learn_nu is not None else 0.05,g_model=g_model)
+                            g = model.extras["g_model"]
                             if not smoke:
                                 torch.save(model.state_dict(), MODELS / f"{stem}.pt")
+                                if g is not None:
+                                    torch.save(g.state_dict(),MODELS / f"{stem}_g.pt")
                             x, t, truth = dense_truth(name, k)
                             pred = surrogate_jets(model, x, t)
                             print(f"{name} N={n_obs} s={sig}% lam={tag} k={k} seed={seed}  |D|={pde_residual(pred, g_sym):.4f}  " + "  ".join(
@@ -142,11 +156,13 @@ if __name__ == "__main__":
                                  "data_over_noise": data_final/float(noise_var) if noise_var > 0 else None,
                                  "lbfgs_evals": n_lbfgs, "lbfgs_ran": bool(n_lbfgs > 5),
                                  "underfit": bool(noise_var > 0 and data_final > 3*noise_var),
-                                 "loss_g": args.loss_g or name,
+                                 "loss_g": (args.loss_g or name) if args.g_model is None else None,
                                  "learn_nu": args.learn_nu is not None,
                                  "nu0": args.learn_nu,
                                  "nu_hat": model.nu_hat, 
-                                 "nu_err": abs(model.nu_hat - NU) / NU
+                                 "nu_err": abs(model.nu_hat - NU) / NU,
+                                 "g_model": args.g_model,
+                                 "c": g.c.tolist() if isinstance(g, PolyG) else None
                                  }
                             if not m["lbfgs_ran"] or m["underfit"]:
                                 ratio = m["data_over_noise"]
