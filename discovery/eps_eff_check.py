@@ -10,6 +10,7 @@ Prediction: gap@3 of the learned equation  ~  gap@3 of  c = (eps_eff, 0, -1, 0, 
 (Own copy of the matrix builder: discovery/stage0b_learned.py runs its table at import.)
 """
 import argparse
+from pinn.runs import load_rows
 import json
 import numpy as np, sympy as sp
 from discovery.criterion import columns, u, JET
@@ -54,6 +55,7 @@ def report(jd, c, label=""):
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--real", action="store_true")
+    ap.add_argument("--mu", type=float, default=0.0, help="symmetry-loss weight of the runs to analyse (0 = stage 1)")
     args = ap.parse_args()
 
     x0, t0, _ = truth_jets("cubic", 0, CASES["cubic"][0])
@@ -79,8 +81,7 @@ if __name__ == "__main__":
         d = np.array([a - p for _, a, p in rows])
         print(f"\nall 30: median |actual - predicted| = {np.median(np.abs(d)):.2f}, max = {np.max(np.abs(d)):.2f}")
     else:
-        rows = [json.loads(l) for l in open(RESULTS / "oracle" / "metrics.jsonl")]
-        rows = [r for r in rows if r.get("g_model") == "poly" and r.get("learn_nu") and r["name"] == "cubic"]
+        rows = load_rows("poly", args.mu, names=["cubic"])
         print(len(rows), "cubic poly rows")
         cache, res = {}, {}
         for r in rows:

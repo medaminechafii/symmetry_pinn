@@ -13,6 +13,7 @@ Check 2  power-law misfit.  Best c*u^p (p = 1..5) for g_hat, relative misfit ||g
     python -m discovery.derivative_powerlaw_check --arm poly
 """
 import argparse
+from pinn.runs import load_rows, stem as run_stem
 import json
 import numpy as np
 from discovery.stage0b_general import (g_poly, g_mlp, load_mlp, points, sample_indices, gap_from_g)
@@ -45,6 +46,7 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--calib", action="store_true")
     ap.add_argument("--arm", choices=["MLP", "poly"], default="MLP")
+    ap.add_argument("--mu", type=float, default=0.0, help="symmetry-loss weight of the runs to analyse (0 = stage 1)")
     args = ap.parse_args()
     it, ix = sample_indices()
 
@@ -66,9 +68,8 @@ if __name__ == "__main__":
         print(f"   best power law: p = {p}, misfit = {mis:.3f};   gap@3 = {gap_from_g(jd, g, g1, 0.1, 3)[0]:.2f}")
         raise SystemExit
 
-    rows = [json.loads(l) for l in open(RESULTS / "oracle" / "metrics.jsonl")]
-    rows = [r for r in rows if r.get("g_model") == args.arm and r.get("learn_nu")]
-    print(len(rows), args.arm, "rows  (sizes in units of rms(u^3))")
+    rows = load_rows(args.arm, args.mu)
+    print(len(rows), args.arm, "rows, mu = " + str(args.mu) + "  (sizes in units of rms(u^3))")
     cache, res = {}, {}
     for r in rows:
         name, k = r["name"], r["k"]

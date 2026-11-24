@@ -13,6 +13,7 @@ also sees how well the network satisfies its own learned equation.  That residua
     python -m discovery.raw_vs_sub_learned --arm MLP
 """
 import argparse
+from pinn.runs import load_rows, stem as run_stem
 import json
 import numpy as np, sympy as sp, torch
 from discovery.criterion import criterion, basis_fields, u
@@ -48,10 +49,8 @@ def net_jets(model, xs, ts):
 
 
 def load_net(r):
-    stem = (f"oracle_{r['name']}_N{r['N']}_s{r['sig']}_lam{r['lam_tag']}_k{r['k']}"
-            f"_nu{r['nu0']}_{r['g_model']}_seed{r['seed']}.pt")
     m = Surrogate(K=r.get("feat", 1))
-    m.load_state_dict(torch.load(MODELS / stem))
+    m.load_state_dict(torch.load(MODELS / (run_stem(r) + ".pt")))
     return m
 
 
@@ -65,6 +64,7 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--check", action="store_true")
     ap.add_argument("--arm", choices=["poly", "MLP"], default="poly")
+    ap.add_argument("--mu", type=float, default=0.0, help="symmetry-loss weight of the runs to analyse (0 = stage 1)")
     args = ap.parse_args()
     it, ix = sample_indices()
 
@@ -81,9 +81,8 @@ if __name__ == "__main__":
                   f"   (expected about 14 and {k_true} for both)")
         raise SystemExit
 
-    rows = [json.loads(l) for l in open(RESULTS / "oracle" / "metrics.jsonl")]
-    rows = [r for r in rows if r.get("g_model") == args.arm and r.get("learn_nu")]
-    print(len(rows), args.arm, "rows")
+    rows = load_rows(args.arm, args.mu)
+    print(len(rows), args.arm, "rows, mu =", args.mu)
     grid, res = {}, {}
     for r in rows:
         name, k = r["name"], r["k"]

@@ -6,13 +6,17 @@ from pinn.learned_g import MLPG          # if this import fails, use pinn.poly_g
 
 KS = np.arange(1, 6)
 
-# one row per run; later duplicates overwrite earlier ones
+import argparse
+from pinn.runs import load_rows, stem as run_stem
+ap = argparse.ArgumentParser()
+ap.add_argument("--mu", type=float, default=0.0, help="symmetry-loss weight of the runs to analyse (0 = stage 1)")
+args = ap.parse_args()
+
+# one row per run of this mu; later duplicates overwrite earlier ones
 rows = {}
-for line in open("results/oracle/metrics.jsonl"):
-    r = json.loads(line)
-    if r.get("g_model") in ("poly", "MLP") and r.get("learn_nu"):
-        rows[(r["g_model"], r["name"], r["N"], r["sig"], r["k"], r["seed"])] = r
-print(len(rows), "runs found")
+for r in load_rows(mu=args.mu):
+    rows[(r["g_model"], r["name"], r["N"], r["sig"], r["k"], r["seed"])] = r
+print(len(rows), "runs found, mu =", args.mu)
 
 truth_cache = {}
 def true_u(name, k):
@@ -24,10 +28,8 @@ def g_hat_of(r, u):
     if r["g_model"] == "poly":
         c = np.array(r["c"])
         return (c[None, :] * u[:, None] ** KS[None, :]).sum(1)
-    stem = (f"oracle_{r['name']}_N{r['N']}_s{r['sig']}_lam{r['lam_tag']}_k{r['k']}"
-            f"_nu{r['nu0']}_MLP_seed{r['seed']}_g.pt")
     g = MLPG()
-    g.load_state_dict(torch.load(MODELS / stem))
+    g.load_state_dict(torch.load(MODELS / (run_stem(r) + "_g.pt")))
     with torch.no_grad():
         return g(torch.tensor(u)).numpy()
 
@@ -48,7 +50,7 @@ for (name, N, sig, arm) in sorted(res, key=lambda t: (t[0], -t[1], t[2], t[3])):
     cell = lambda i: f"{np.median(a[:, i]):.4f} [{a[:, i].min():.4f}-{a[:, i].max():.4f}]"
     print(f"{name:6s} {N:5d} {sig:3d} {arm:5s} {len(a):2d} | {cell(0):26s} | {cell(1):26s} | {cell(2):26s}")
 
-np.savetxt("results/learned_g_per_run.csv", np.array(per_run, dtype=object), fmt="%s", delimiter=",",
+np.savetxt("results/learned_g_per_run.csv" if args.mu == 0 else f"results/learned_g_per_run_mu{args.mu:g}.csv", np.array(per_run, dtype=object), fmt="%s", delimiter=",",
            header="arm,name,N,sig,k,seed,err_g,nu_err,D")
 NU = 0.1
 comp = defaultdict(list)

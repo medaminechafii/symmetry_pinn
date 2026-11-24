@@ -10,6 +10,7 @@ from it (same idea as eps_eff_check.py), so that MLP and polynomial runs are com
     python -m discovery.stage0b_general --arm poly
 """
 import argparse
+from pinn.runs import load_rows, stem as run_stem
 import json
 import numpy as np, sympy as sp, torch
 from discovery.criterion import columns, u, JET
@@ -68,10 +69,8 @@ def sample_indices():
 
 
 def load_mlp(r):
-    stem = (f"oracle_{r['name']}_N{r['N']}_s{r['sig']}_lam{r['lam_tag']}_k{r['k']}"
-            f"_nu{r['nu0']}_MLP_seed{r['seed']}_g.pt")
     m = MLPG()
-    m.load_state_dict(torch.load(MODELS / stem))
+    m.load_state_dict(torch.load(MODELS / (run_stem(r) + "_g.pt")))
     return m
 
 
@@ -79,6 +78,7 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--check", action="store_true")
     ap.add_argument("--arm", choices=["MLP", "poly"], default="MLP")
+    ap.add_argument("--mu", type=float, default=0.0, help="symmetry-loss weight of the runs to analyse (0 = stage 1)")
     args = ap.parse_args()
     it, ix = sample_indices()
 
@@ -103,9 +103,8 @@ if __name__ == "__main__":
               " gap@3 =", round(gap_from_g(jd, g, g1, 0.1, 3)[0], 2))
         raise SystemExit
 
-    rows = [json.loads(l) for l in open(RESULTS / "oracle" / "metrics.jsonl")]
-    rows = [r for r in rows if r.get("g_model") == args.arm and r.get("learn_nu")]
-    print(len(rows), args.arm, "rows")
+    rows = load_rows(args.arm, args.mu)
+    print(len(rows), args.arm, "rows, mu =", args.mu)
     cache, res = {}, {}
     for r in rows:
         name, k = r["name"], r["k"]

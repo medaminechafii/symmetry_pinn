@@ -13,6 +13,7 @@ The same rule is applied to the exact equations -u^3 + eps*u (data-free calibrat
     python -m discovery.deflated_count_check --arm MLP
 """
 import argparse
+from pinn.runs import load_rows, stem as run_stem
 import json
 import numpy as np
 from discovery.stage0b_general import (FUNS, KEYS, points, sample_indices, g_poly, g_mlp, load_mlp)
@@ -48,6 +49,7 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--calib", action="store_true")
     ap.add_argument("--arm", choices=["MLP", "poly"], default="poly")
+    ap.add_argument("--mu", type=float, default=0.0, help="symmetry-loss weight of the runs to analyse (0 = stage 1)")
     args = ap.parse_args()
     it, ix = sample_indices()
 
@@ -62,9 +64,8 @@ if __name__ == "__main__":
             print(f"{eps:7.3f} | {nd:7d} {j:3d} {J1:6.2f} {J2:6.2f} | {c[0.5]:10d}  {c[1.0]:10d}")
         raise SystemExit
 
-    rows = [json.loads(l) for l in open(RESULTS / "oracle" / "metrics.jsonl")]
-    rows = [r for r in rows if r.get("g_model") == args.arm and r.get("learn_nu")]
-    print(len(rows), args.arm, "rows")
+    rows = load_rows(args.arm, args.mu)
+    print(len(rows), args.arm, "rows, mu = " + str(args.mu) + "")
     cache, res = {}, {}
     for r in rows:
         name, k = r["name"], r["k"]
