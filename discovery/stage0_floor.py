@@ -124,7 +124,7 @@ def check_vs_metrics(name, n_obs, sig, oracle_J, truth_J):
     for line in open(path):
         r = json.loads(line)
         if (r["name"] == name and r["N"] == n_obs and r["sig"] == sig and r["lam"] == 1.0 and r["seed"] == 0
-                and r.get("g_model") is None and not r.get("learn_nu") and not r.get("mu") and r["steps"] == 4000
+                and r.get("g_model") is None and not r.get("learn_nu") and not r.get("mu") and not r.get("g_wd") and r["steps"] == 4000
                 and r["ncolloc"] == 2000 and r["feat"] == 1 and not r["cos"] and r.get("loss_g") == name):
             rows[r["k"]] = r                       # later rows overwrite earlier duplicates
     if not rows:

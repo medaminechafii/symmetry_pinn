@@ -10,13 +10,14 @@ import argparse
 from pinn.runs import load_rows, stem as run_stem
 ap = argparse.ArgumentParser()
 ap.add_argument("--mu", type=float, default=0.0, help="symmetry-loss weight of the runs to analyse (0 = stage 1)")
+ap.add_argument("--wd", type=float, default=0.0, help="weight-decay baseline: g_wd of the runs to analyse (0 = off)")
 args = ap.parse_args()
 
 # one row per run of this mu; later duplicates overwrite earlier ones
 rows = {}
-for r in load_rows(mu=args.mu):
+for r in load_rows(mu=args.mu, wd=args.wd):
     rows[(r["g_model"], r["name"], r["N"], r["sig"], r["k"], r["seed"])] = r
-print(len(rows), "runs found, mu =", args.mu)
+print(len(rows), "runs found, mu =", args.mu, " wd =", args.wd)
 
 truth_cache = {}
 def true_u(name, k):
@@ -50,7 +51,7 @@ for (name, N, sig, arm) in sorted(res, key=lambda t: (t[0], -t[1], t[2], t[3])):
     cell = lambda i: f"{np.median(a[:, i]):.4f} [{a[:, i].min():.4f}-{a[:, i].max():.4f}]"
     print(f"{name:6s} {N:5d} {sig:3d} {arm:5s} {len(a):2d} | {cell(0):26s} | {cell(1):26s} | {cell(2):26s}")
 
-np.savetxt("results/learned_g_per_run.csv" if args.mu == 0 else f"results/learned_g_per_run_mu{args.mu:g}.csv", np.array(per_run, dtype=object), fmt="%s", delimiter=",",
+np.savetxt("results/learned_g_per_run" + (f"_mu{args.mu:g}" if args.mu else "") + (f"_wd{args.wd:g}" if args.wd else "") + ".csv", np.array(per_run, dtype=object), fmt="%s", delimiter=",",
            header="arm,name,N,sig,k,seed,err_g,nu_err,D")
 NU = 0.1
 comp = defaultdict(list)

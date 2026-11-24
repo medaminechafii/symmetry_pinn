@@ -20,7 +20,7 @@ def build_matrix_learned(jd, c, nu_hat):
 rows = []
 for line in open(RESULTS / "oracle" / "metrics.jsonl"):
     r = json.loads(line)
-    if r.get("g_model") == "poly" and r.get("learn_nu") and not r.get("mu"):   # stage 1 only
+    if r.get("g_model") == "poly" and r.get("learn_nu") and not r.get("mu") and not r.get("g_wd"):   # stage 1 only
         rows.append(r)
 print(len(rows),"poly rows")
 

@@ -45,7 +45,7 @@ if __name__ == "__main__":
     rows = []
     if path.exists():
         rows = [r for r in map(json.loads, open(path))
-                if r.get("g_model") == "poly" and r.get("learn_nu") and r["name"] == "cubic" and not r.get("mu")]   # stage 1 only
+                if r.get("g_model") == "poly" and r.get("learn_nu") and r["name"] == "cubic" and not r.get("mu") and not r.get("g_wd")]   # stage 1 only
 
     if not rows:
         print("no cubic poly rows here: demo with the coefficient vector of the earlier Mac run")

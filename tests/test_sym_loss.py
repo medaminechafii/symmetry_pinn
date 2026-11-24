@@ -111,3 +111,20 @@ def test_mu_zero_reproduces_the_run_without_sym_loss():
     assert h0 == h1 and f0 == f1
     assert torch.equal(m0.extras["g_model"].c, m1.extras["g_model"].c)
     assert h2 != h0 and len(m2.extras["sym_hist"]) > 0
+
+
+def test_g_wd_zero_reproduces_and_wd_shrinks_g():
+    """Weight-decay baseline: g_wd = 0 gives the identical run; a large g_wd pulls every coefficient towards 0."""
+    from pinn.pinn_oracle import train_pinn
+    rng = np.random.default_rng(0)
+    xo = torch.tensor(rng.uniform(0, 2 * np.pi, 40)); to = torch.tensor(rng.uniform(0, 2, 40))
+    uo = torch.sin(xo) * torch.exp(-to)
+    common = dict(lam=1.0, n_colloc=100, seed=0, adam_steps=200, verbose=False, learn_nu=True, nu0=0.05,
+                  lbfgs_iter=20)
+    m0, f0, h0, _ = train_pinn(xo, to, uo, None, g_model="poly", **common)
+    m1, f1, h1, _ = train_pinn(xo, to, uo, None, g_model="poly", g_wd=0.0, **common)
+    m2, f2, h2, _ = train_pinn(xo, to, uo, None, g_model="poly", g_wd=10.0, **common)
+    c0, c1, c2 = (m.extras["g_model"].c.detach() for m in (m0, m1, m2))
+    assert h0 == h1 and f0 == f1 and torch.equal(c0, c1)
+    assert m1.extras["g_wd"] == 0.0 and m2.extras["g_wd"] == 10.0
+    assert (c2**2).sum() < 0.1 * (c0**2).sum()

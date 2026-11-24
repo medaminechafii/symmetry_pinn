@@ -13,9 +13,11 @@ G_TORCH.update({f"cubic_{tag}": lambda u, e=eps: -u**3 + e*u for tag, eps in EPS
 
 def train_pinn(x_obs, t_obs, u_obs, g_fun, lam=1.0, n_colloc=2000,seed=0,
                adam_steps=4000, verbose=True, cos=False, K=1,learn_nu = False,nu0 = 0.05,g_model=None,
-               sym=None, mu=0.0, sym_detach=True, lbfgs_iter=2000):
+               sym=None, mu=0.0, sym_detach=True, lbfgs_iter=2000, g_wd=0.0):
     """sym: list of generator names (pinn.sym_loss.GENERATORS); the symmetry loss mu * L_sym is only computed
-    and added when sym is given AND mu > 0, so mu = 0 reproduces the run without it exactly."""
+    and added when sym is given AND mu > 0, so mu = 0 reproduces the run without it exactly.
+    g_wd: weight-decay baseline, adds g_wd * (sum of squared parameters of the learned g) to the loss; it is only
+    computed when g_wd > 0 and g is learned, so g_wd = 0 reproduces the run without it exactly."""
     if g_model is not None:
         torch.manual_seed(seed)
         if isinstance(g_model, str):
@@ -41,6 +43,9 @@ def train_pinn(x_obs, t_obs, u_obs, g_fun, lam=1.0, n_colloc=2000,seed=0,
     sym_hist = []
     def sym_term():
         return sym_loss(model, g_fun, nu_now(), xc, tc, sym, detach=sym_detach)
+    use_wd = g_wd > 0 and g_model is not None
+    def wd_term():
+        return sum((p**2).sum() for p in g_model.parameters())
     def grad_norms(model,d,r):
         params = list(model.parameters()) 
         gd = torch.autograd.grad(d,params,retain_graph=True)
@@ -58,6 +63,8 @@ def train_pinn(x_obs, t_obs, u_obs, g_fun, lam=1.0, n_colloc=2000,seed=0,
             s = sym_term()
             loss = loss + mu * s
             sym_hist.append(s.item())
+        if use_wd:
+            loss = loss + g_wd * wd_term()
         history.append((loss.item(), d.item(), r.item()))
         if step%100 == 0:
             gd_norm,gr_norm = grad_norms(model,d,r)
@@ -78,6 +85,8 @@ def train_pinn(x_obs, t_obs, u_obs, g_fun, lam=1.0, n_colloc=2000,seed=0,
             s = sym_term()
             loss = loss + mu * s
             sym_hist.append(s.item())
+        if use_wd:
+            loss = loss + g_wd * wd_term()
         loss.backward()
         history.append((loss.item(), d.item(), r.item()))
         return loss
@@ -87,11 +96,14 @@ def train_pinn(x_obs, t_obs, u_obs, g_fun, lam=1.0, n_colloc=2000,seed=0,
     s_final = sym_term().item() if use_sym else None
     if use_sym:
         final += mu * s_final
+    if use_wd:
+        final += g_wd * wd_term().item()
 
     print(f"  final  data {d.item():.3e}   pde {r.item():.3e}" + (f"   sym {s_final:.3e}" if use_sym else ""))
     model.nu_hat = float(nu_now().detach()) if learn_nu else NU
     model.extras = {"g_model":g_model, "sym": sym if use_sym else None, "mu": mu if use_sym else 0.0,
-                    "sym_hist": sym_hist, "sym_final": s_final}
+                    "sym_hist": sym_hist, "sym_final": s_final,
+                    "g_wd": g_wd if use_wd else 0.0}
     return model, final, history, grad_his
 
 if __name__ == "__main__":
@@ -121,6 +133,8 @@ if __name__ == "__main__":
     ap.add_argument("--sym", nargs="*", choices=["auto", "galilean", "scaling", "projective"], default=None,
                     help="generators for the symmetry loss; 'auto' = the true ones of the case (pinn.sym_loss.CASE_GENS)")
     ap.add_argument("--mu", type=float, default=0.0, help="weight of the symmetry loss (0 = off)")
+    ap.add_argument("--g-wd", type=float, default=0.0,
+                    help="weight-decay baseline: weight of sum(params of learned g)^2 (0 = off; needs --g-model)")
     args = ap.parse_args()
     steps = args.steps
     smoke = args.smoke
@@ -146,7 +160,8 @@ if __name__ == "__main__":
                             if args.sym and args.mu > 0:
                                 gens = CASE_GENS[name] if args.sym == ["auto"] else list(args.sym)
                             sym_tag = f"_sym{'+'.join(gens)}_mu{args.mu:g}" if gens else ""
-                            stem = f"oracle_{name}_N{n_obs}_s{sig}_lam{tag}_k{k}{var}{mis}{nutag}{g_tag}{sym_tag}_seed{seed}"
+                            wd_tag = f"_wd{args.g_wd:g}" if args.g_wd > 0 and args.g_model is not None else ""
+                            stem = f"oracle_{name}_N{n_obs}_s{sig}_lam{tag}_k{k}{var}{mis}{nutag}{g_tag}{sym_tag}{wd_tag}_seed{seed}"
                             if not smoke and (MODELS / f"{stem}.pt").exists():
                                 print(f"skip {stem} (exists)"); continue
                             sel = s["exp_id"] == k
@@ -158,7 +173,7 @@ if __name__ == "__main__":
                                 g_loss, lam=lam, adam_steps=steps, seed=seed, verbose=False,
                                 n_colloc=args.ncolloc, cos=args.cos, K=args.feat,learn_nu = learn_nu is not None,
                                 nu0 = learn_nu if learn_nu is not None else 0.05,g_model=g_model,
-                                sym=gens, mu=args.mu)
+                                sym=gens, mu=args.mu, g_wd=args.g_wd)
                             g = model.extras["g_model"]
                             if not smoke:
                                 torch.save(model.state_dict(), MODELS / f"{stem}.pt")
@@ -193,7 +208,8 @@ if __name__ == "__main__":
                                  "c": g.c.tolist() if isinstance(g, PolyG) else None,
                                  "sym": model.extras["sym"],
                                  "mu": model.extras["mu"],
-                                 "sym_final": model.extras["sym_final"]
+                                 "sym_final": model.extras["sym_final"],
+                                 "g_wd": model.extras["g_wd"]
                                  }
                             if not m["lbfgs_ran"] or m["underfit"]:
                                 ratio = m["data_over_noise"]
