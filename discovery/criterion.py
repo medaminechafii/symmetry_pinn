@@ -57,7 +57,7 @@ def Dt(f):
 
 
 # --- prolongation and criterion ---------------------------------------------------
-def criterion(xi, tau, phi, g):
+def criterion(xi, tau, phi, g,nu=NU):
     """pr v(Delta) for Delta = u_t + u u_x - nu u_xx - g(u), before restricting to solutions.
 
     C4: the formulas from your Week 2 Part C derivation (also in the status file, section 7):
@@ -72,11 +72,11 @@ def criterion(xi, tau, phi, g):
     
     phi_xx = Dx(phi_x) - uxx*Dx(xi) - uxt*Dx(tau)   
     
-    return phi_t + u*phi_x + ux*phi - NU*phi_xx - sp.diff(g,u)*phi                                 
+    return phi_t + u*phi_x + ux*phi - nu*phi_xx - sp.diff(g,u)*phi                                 
     
 
 
-def on_solutions(expr, g):
+def on_solutions(expr, g,nu=NU):
     """Replace u_t and u_xt using the equation, so only (x, t, u, u_x, u_xx, u_xxx) remain.
 
     C5: rhs   = the right-hand side of u_t = ...   (same as your rhs_burgers, with nu = NU)
@@ -85,18 +85,18 @@ def on_solutions(expr, g):
                 so write this one out).
     Then substitute with expr.subs({uxt: rhs_x, ut: rhs}) and sp.expand the result
     (expanding makes true-symmetry columns simplify to exactly 0)."""
-    rhs   = -u*ux + NU*uxx + g                                   
+    rhs   = -u*ux + nu*uxx + g                                   
     
-    rhs_x = -ux**2 - u*uxx + NU*uxxx + sp.diff(g, u)*ux          
+    rhs_x = -ux**2 - u*uxx + nu*uxxx + sp.diff(g, u)*ux          
     
     return expr.subs({uxt: rhs_x, ut: rhs}).expand()             
     
 
 
-def columns(g):
+def columns(g,nu=NU):
     """The 30 symbolic columns (restricted to solutions) for a given g(u)."""
     fields, _ = basis_fields()
-    return [on_solutions(criterion(*f, g), g) for f in fields]
+    return [on_solutions(criterion(*f, g,nu), g,nu) for f in fields]
 
 
 # --- self-checks (do not change) -------------------------------------------------
@@ -131,3 +131,4 @@ if __name__ == "__main__":
     _check(f"g = 0: exactly 2 identically-zero columns (d/dx, d/dt); found {n_zero}", n_zero == 2)
     _check("after on_solutions, no u_t or u_xt is left in any column",
            all(not (c.has(ut) or c.has(uxt)) for c in cols))
+    
