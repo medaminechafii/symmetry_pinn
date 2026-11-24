@@ -133,7 +133,7 @@ Note from the session: the one Mac run with c_3 = -0.94 had been seen before the
 - Exact oracle D per cell from `metrics.jsonl` instead of the 0.004 floor.
 - Condition number of [u_xx, u, ..., u^5] on the true jets (identifiability of nu vs g).
 - Shared g across experiments (currently one g per experiment).
-- Stage 0: floor of the substituted discovery on true and oracle jets (not measured).
+- Stage 0: floor of the substituted discovery on true and oracle jets: done, see section 8.
 - Symmetry loss: skeleton with mu = 0 that reproduces stage 1 exactly; true generators first;
   test on the hard cells (N = 50, 200 at 3%); budget-matched baseline needed to attribute any gain to L_sym.
 - `dense_cubic.npz` md5 differs between the Mac and the ideapad (Mac: 702a012bd90964ad38c406977e37972f);
@@ -150,3 +150,86 @@ bash run_lg_all.sh        # xargs -P 6, arms {MLP, poly}, N {1000, 200, 50}, sig
 Check: `grep -c '"g_model": "MLP"' results/oracle/metrics.jsonl` and the same for `poly` (expect 108 each).
 Analysis: `python -m experiments.analyse_learned_g_all` (writes `results/learned_g_per_run.csv`).
 Models: `models/oracle_{name}_N{N}_s{sig}_lam1_k{k}_nu0.05_{poly|MLP}_seed{seed}[_g].pt`.
+
+---
+
+## 8. Symmetry detection on the learned equations (Stage 0 / 0b)
+
+Full explanation with worked examples: `notes/symmetry_detection_problem.pdf`. Short version below.
+Detector: 30 basis fields (xi, tau, phi in {1, x, t, u, x^2, t^2, u^2, xt, xu, tu}), Lie criterion at 3000 points,
+columns normalised, SVD. gap_k = log10(sigma_(k+1) / sigma_(k)), sigma_(k) = k-th smallest singular value.
+True counts: cubic 3 (d/dx, d/dt, scaling), g0 5 (+ Galilean, projective).
+
+### 8.1 Stage 0 (true nu and g)
+- Substituting u_t, u_xt with the equation gives gap about 14 for truth, oracle and data-only jets, and the swap test
+  changes nothing. Reason: with the true g the symmetry columns are identically 0 as formulas, so jets cannot matter.
+  The floor of substituted discovery is set by the learned g_hat and nu_hat, not by the jets.
+  (My earlier claim that u_xx/u_xxx errors would limit it was wrong.)
+- Raw columns (u_t, u_xt from the network): oracle 0.92 (count 2), data-only 0.07-0.37 (cubic N = 1000, 1%).
+- Jet errors, cubic N = 1000, 1%: oracle u 0.17%, u_x 0.50%, u_xx 1.44%, u_xxx 3.57%; data-only 0.48 / 1.19 / 3.37 / 8.73%.
+
+### 8.2 Learned equations (stage 1 runs, 108 poly + 108 MLP)
+- Largest-jump count: 2 in 216 / 216 runs (only the trivial d/dx, d/dt). This rule is flawed: the jump from the
+  trivial values (1e-17) to the next value always wins.
+- gap at the true k, medians per cell: cubic poly 0.27-0.55, cubic MLP 0.22-0.33, g0 poly 0.11-0.54, g0 MLP 0.20-1.18.
+  No trend with N or noise. Exact equation: about 14.
+- Calibration on exact g = -u^3 + eps u (data-free): eps 0.003 -> gap 2.0; 0.01 -> 1.5; 0.03 -> 1.0; 0.1 -> 0.6; 0.3 -> 0.4.
+  RMS(u) = 0.197, RMS(u^3) = 0.0395, so eps = 0.003 is a breaking of 1.5% of the cubic term. The detector is very sensitive.
+
+### 8.3 Looking for the cause
+- Scaling breaking B = u g' - 3 g (0 for g = c u^3; = -2 eps u for the eps equations).
+  eps_eff = RMS(B) / (2 RMS(u)): learned cubic runs 0.02-0.05 (poly), 0.03-0.09 (MLP). This predicts gaps about 0.8-1.2;
+  the actual gaps are 0.6-0.8 lower in every cell and both arms. **Not explained.**
+- Coefficient attribution (poly, cubic): c3 only -> gap about 14; c3 + c5 alone -> same gap as the full equation;
+  removing c5 -> 0.6-1.6 (c4, c1 still break it). Median |c5| 0.30-0.55 against |c3| about 1.1 (signs not checked).
+- MLP shows the same low gaps -> not a polynomial artefact.
+- Derivative check (cubic, units of RMS(u^3)), N = 1000, 1%: value error 0.054 (poly) / 0.068 (MLP),
+  derivative error about 2x larger, B = 0.257 / 0.359, i.e. 4-5x the value error. In harder cells B is about 2x the value error.
+- Power-law test (best c u^p, p = 1..5): p = 3 in 106 / 108 cubic runs; misfit 4-29%, tracks the function error.
+  Calibration: eps 0.003 -> 1%, 0.01 -> 3.5%, 0.03 -> 11%, 0.1 -> p = 5 with 35%. No control on learned near-symmetric runs yet.
+
+### 8.4 Deflated count (drop values below 1e-9 x largest, then largest jump among the next 8 if >= J_min)
+J_min was fixed before looking: 0.5 (accepts about eps 0.1, i.e. 50% of the cubic term) and 1.0 (about eps 0.03).
+
+| case, arm | correct @0.5 | correct @1.0 |
+|---|---|---|
+| cubic poly (true 3) | 11 / 54 | 1 / 54 |
+| cubic MLP | 2 / 54 (plus one 4 and one 5) | 0 / 54 |
+| g0 poly (true 5) | 5 / 54 | 1 / 54 |
+| g0 MLP | 30 / 54 (18 / 18 at N = 1000) | 14 / 54 |
+
+Cubic is not rescued; g0 with the MLP at N = 1000 is (all 5 symmetries in 18 / 18 runs at the loose tolerance).
+
+### 8.5 Substituted vs raw on the learned runs (same network jets, same g_hat, g_hat', nu_hat)
+`python -m discovery.raw_vs_sub_learned --arm poly|MLP`. raw = substituted part - 3 x (network residual w.r.t. its own learned equation).
+
+| case, arm, cell | residual | sub gap | sub correct | raw gap | raw correct |
+|---|---|---|---|---|---|
+| cubic poly 1000/1% | 0.0040 | 0.38 | 2 / 9 | 0.30 | 2 / 9 |
+| cubic poly 50/1% | 0.0053 | 0.51 | 5 / 9 | 0.38 | 2 / 9 |
+| cubic MLP 200/3% | 0.0065 | 0.35 | 0 / 9 | 0.17 | 0 / 9 |
+| g0 poly 1000/1% | 0.0044 | 0.55 | 4 / 9 | 0.56 | 3 / 9 |
+| g0 MLP 1000/1% | 0.0046 | 1.18 | 9 / 9 | 0.89 | 8 / 9 |
+| g0 MLP 1000/3% | 0.0047 | 1.14 | 9 / 9 | 0.85 | 9 / 9 |
+| g0 MLP 200/1% | 0.0044 | 0.78 | 5 / 9 | 0.79 | 6 / 9 |
+
+(Selected cells; counts with the deflated rule, J_min = 0.5. Totals: cubic poly 13 / 54 sub vs 5 / 54 raw; g0 MLP 30 / 54 both.)
+- The networks satisfy their own learned equation to 0.4-0.6% (about 1% at N = 50, 3%).
+- Raw is never better and usually only slightly worse (0-0.13 decades); the largest loss is MLP g0 at N = 1000 (about 0.3),
+  where g_hat is nearly symmetric and the residual starts to matter.
+- Conclusion: the bottleneck is the symmetry breaking of g_hat, not the time derivatives. Substitution helps modestly and is kept.
+- Here the substituted columns are evaluated at the network's u, so the sub counts differ slightly from 8.4 (13 vs 11 for cubic poly).
+
+### 8.6 Comparison with LieNLSD (Hu, Li, Lin, ICML 2025; code github.com/hulx2002/LieNLSD)
+From a reading of 7 repo files (not all verified): same 10-monomial library and SVD; the number of generators is a fixed
+absolute threshold on sqrt(singular values of sum C^T C), hand-set per task (Burgers 0.2, heat 0.1, KdV 1, ...);
+no column normalisation; criterion from the network Jacobian and finite differences (not substituted); noise-free data;
+ADMM sparsification of the basis afterwards. Our deflated J_min rule is not their method.
+Normalisation does not change exact null spaces; on approximate ones skipping it gave about 0.3-0.4 decades more separation in examples.
+
+### 8.7 Open
+- Why the actual gap is 0.6-0.8 below the eps_eff prediction.
+- False-positive control: stage 1 on near-symmetric data (eps = 0.03, 0.1), then the power-law test and the deflated count.
+- g0: no reference for "g_hat consistent with zero".
+- Scripts: discovery/stage0_floor.py, eps_calibration.py, stage0b_learned.py, stage0b_general.py, eps_eff_check.py,
+  attribution_check.py, derivative_powerlaw_check.py, deflated_count_check.py, raw_vs_sub_learned.py.

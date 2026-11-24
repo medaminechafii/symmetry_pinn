@@ -5,13 +5,17 @@ from pinn.discover_from_surrogate import pde_residual
 from discovery.noise_gap import CASES,ALL_CASES,EPS
 from pinn.surrogate import dense_truth, surrogate_jets, rel_error
 from pinn.learned_g import PolyG,MLPG
+from pinn.sym_loss import sym_loss, CASE_GENS
 
 G_TORCH = {"g0": lambda u: torch.zeros_like(u), "cubic": lambda u: -u**3}
 
 G_TORCH.update({f"cubic_{tag}": lambda u, e=eps: -u**3 + e*u for tag, eps in EPS.items()})
 
 def train_pinn(x_obs, t_obs, u_obs, g_fun, lam=1.0, n_colloc=2000,seed=0,
-               adam_steps=4000, verbose=True, cos=False, K=1,learn_nu = False,nu0 = 0.05,g_model=None):
+               adam_steps=4000, verbose=True, cos=False, K=1,learn_nu = False,nu0 = 0.05,g_model=None,
+               sym=None, mu=0.0, sym_detach=True, lbfgs_iter=2000):
+    """sym: list of generator names (pinn.sym_loss.GENERATORS); the symmetry loss mu * L_sym is only computed
+    and added when sym is given AND mu > 0, so mu = 0 reproduces the run without it exactly."""
     if g_model is not None:
         torch.manual_seed(seed)
         if isinstance(g_model, str):
@@ -33,6 +37,10 @@ def train_pinn(x_obs, t_obs, u_obs, g_fun, lam=1.0, n_colloc=2000,seed=0,
         u, u_x, u_t, u_xx, _ = jet(model, xc, tc)
         res  = u_t + u*u_x - nu_now()*u_xx - g_fun(u)          # P1: the PDE residual
         return data, torch.mean(res**2)
+    use_sym = bool(sym) and mu > 0
+    sym_hist = []
+    def sym_term():
+        return sym_loss(model, g_fun, nu_now(), xc, tc, sym, detach=sym_detach)
     def grad_norms(model,d,r):
         params = list(model.parameters()) 
         gd = torch.autograd.grad(d,params,retain_graph=True)
@@ -46,6 +54,10 @@ def train_pinn(x_obs, t_obs, u_obs, g_fun, lam=1.0, n_colloc=2000,seed=0,
     for step in range(adam_steps):
         d, r = losses()
         loss = d + lam * r
+        if use_sym:
+            s = sym_term()
+            loss = loss + mu * s
+            sym_hist.append(s.item())
         history.append((loss.item(), d.item(), r.item()))
         if step%100 == 0:
             gd_norm,gr_norm = grad_norms(model,d,r)
@@ -56,22 +68,30 @@ def train_pinn(x_obs, t_obs, u_obs, g_fun, lam=1.0, n_colloc=2000,seed=0,
         if verbose and step % 500 == 0:
             print(f"  {step:5d}  data {d.item():.3e}   pde {r.item():.3e}")
 
-    opt = torch.optim.LBFGS(all_params, max_iter=2000,
+    opt = torch.optim.LBFGS(all_params, max_iter=lbfgs_iter,
                             line_search_fn="strong_wolfe",tolerance_grad=1e-14, tolerance_change=1e-12)
     def closure():
         opt.zero_grad()
         d, r = losses()
         loss = d + lam*r
+        if use_sym:
+            s = sym_term()
+            loss = loss + mu * s
+            sym_hist.append(s.item())
         loss.backward()
         history.append((loss.item(), d.item(), r.item()))
         return loss
     opt.step(closure)
     d, r = losses()
     final = (d + lam*r).item()
+    s_final = sym_term().item() if use_sym else None
+    if use_sym:
+        final += mu * s_final
 
-    print(f"  final  data {d.item():.3e}   pde {r.item():.3e}")
+    print(f"  final  data {d.item():.3e}   pde {r.item():.3e}" + (f"   sym {s_final:.3e}" if use_sym else ""))
     model.nu_hat = float(nu_now().detach()) if learn_nu else NU
-    model.extras = {"g_model":g_model}
+    model.extras = {"g_model":g_model, "sym": sym if use_sym else None, "mu": mu if use_sym else 0.0,
+                    "sym_hist": sym_hist, "sym_final": s_final}
     return model, final, history, grad_his
 
 if __name__ == "__main__":
@@ -98,6 +118,9 @@ if __name__ == "__main__":
     ap.add_argument("--learn-nu", type=float, default=None,
                 help="___ (hint: learn nu, starting at this value; default = nu fixed at the truth)")
     ap.add_argument("--g-model",choices=["poly","MLP"],default=None)
+    ap.add_argument("--sym", nargs="*", choices=["auto", "galilean", "scaling", "projective"], default=None,
+                    help="generators for the symmetry loss; 'auto' = the true ones of the case (pinn.sym_loss.CASE_GENS)")
+    ap.add_argument("--mu", type=float, default=0.0, help="weight of the symmetry loss (0 = off)")
     args = ap.parse_args()
     steps = args.steps
     smoke = args.smoke
@@ -119,7 +142,11 @@ if __name__ == "__main__":
                             mis = f"_loss{args.loss_g}" if args.loss_g else ""
                             nutag = f"_nu{args.learn_nu}" if args.learn_nu is not None else ""
                             g_tag = f"_{args.g_model}" if args.g_model is not None else ""
-                            stem = f"oracle_{name}_N{n_obs}_s{sig}_lam{tag}_k{k}{var}{mis}{nutag}{g_tag}_seed{seed}"
+                            gens = None
+                            if args.sym and args.mu > 0:
+                                gens = CASE_GENS[name] if args.sym == ["auto"] else list(args.sym)
+                            sym_tag = f"_sym{'+'.join(gens)}_mu{args.mu:g}" if gens else ""
+                            stem = f"oracle_{name}_N{n_obs}_s{sig}_lam{tag}_k{k}{var}{mis}{nutag}{g_tag}{sym_tag}_seed{seed}"
                             if not smoke and (MODELS / f"{stem}.pt").exists():
                                 print(f"skip {stem} (exists)"); continue
                             sel = s["exp_id"] == k
@@ -130,7 +157,8 @@ if __name__ == "__main__":
                                 torch.tensor(xo), torch.tensor(to), torch.tensor(uo),
                                 g_loss, lam=lam, adam_steps=steps, seed=seed, verbose=False,
                                 n_colloc=args.ncolloc, cos=args.cos, K=args.feat,learn_nu = learn_nu is not None,
-                                nu0 = learn_nu if learn_nu is not None else 0.05,g_model=g_model)
+                                nu0 = learn_nu if learn_nu is not None else 0.05,g_model=g_model,
+                                sym=gens, mu=args.mu)
                             g = model.extras["g_model"]
                             if not smoke:
                                 torch.save(model.state_dict(), MODELS / f"{stem}.pt")
@@ -162,7 +190,10 @@ if __name__ == "__main__":
                                  "nu_hat": model.nu_hat, 
                                  "nu_err": abs(model.nu_hat - NU) / NU,
                                  "g_model": args.g_model,
-                                 "c": g.c.tolist() if isinstance(g, PolyG) else None
+                                 "c": g.c.tolist() if isinstance(g, PolyG) else None,
+                                 "sym": model.extras["sym"],
+                                 "mu": model.extras["mu"],
+                                 "sym_final": model.extras["sym_final"]
                                  }
                             if not m["lbfgs_ran"] or m["underfit"]:
                                 ratio = m["data_over_noise"]
