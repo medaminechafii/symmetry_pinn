@@ -75,10 +75,10 @@ if __name__ == "__main__":
         g, g1 = g_poly(r["c"], jd["u"]) if args.arm == "poly" else g_mlp(load_mlp(r), jd["u"])
         res.setdefault((name, r["N"], r["sig"]), []).append(deflated(spectrum(jd, g, g1, r["nu_hat"])))
 
-    print(f"{'case':6s} {'N':>5s} {'sig':>3s} {'n':>2s} | {'dropped':>7s} | {'j* (median)':>11s} | {'J1 med':>6s} {'J2 med':>6s} | counts @0.5            | counts @1.0   (true: cubic 3, g0 5)")
+    print(f"{'case':10s} {'N':>5s} {'sig':>3s} {'n':>2s} | {'dropped':>7s} | {'j* (median)':>11s} | {'J1 med':>6s} {'J2 med':>6s} | counts @0.5            | counts @1.0   (true: cubic 3, g0 5, cubic_e* 2)")
     for (name, N, sig), v in sorted(res.items(), key=lambda kv: (kv[0][0], -kv[0][1], kv[0][2])):
         nd = sorted({a[0] for a in v})
         c05 = sorted(a[4][0.5] for a in v)
         c10 = sorted(a[4][1.0] for a in v)
-        print(f"{name:6s} {N:5d} {sig:3d} {len(v):2d} | {str(nd):>7s} | {np.median([a[1] for a in v]):11.0f} | "
+        print(f"{name:10s} {N:5d} {sig:3d} {len(v):2d} | {str(nd):>7s} | {np.median([a[1] for a in v]):11.0f} | "
               f"{np.median([a[2] for a in v]):6.2f} {np.median([a[3] for a in v]):6.2f} | {str(c05):22s} | {c10}")

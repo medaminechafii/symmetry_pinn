@@ -7,7 +7,7 @@ from pinn.learned_g import MLPG          # if this import fails, use pinn.poly_g
 KS = np.arange(1, 6)
 
 import argparse
-from pinn.runs import load_rows, stem as run_stem
+from pinn.runs import load_rows, true_g, stem as run_stem
 ap = argparse.ArgumentParser()
 ap.add_argument("--mu", type=float, default=0.0, help="symmetry-loss weight of the runs to analyse (0 = stage 1)")
 ap.add_argument("--wd", type=float, default=0.0, help="weight-decay baseline: g_wd of the runs to analyse (0 = off)")
@@ -39,7 +39,7 @@ per_run = []
 for key, r in rows.items():
     arm, name, N, sig, k, seed = key
     u = true_u(name, k)
-    g_true = np.zeros_like(u) if name == "g0" else -u**3
+    g_true = true_g(name, u)[0]
     err = np.sqrt(np.mean((g_hat_of(r, u) - g_true)**2)) / np.sqrt(np.mean((u**3)**2))
     res[(name, N, sig, arm)].append((err, r["nu_err"], r["D"]))
     per_run.append((arm, name, N, sig, k, seed, err, r["nu_err"], r["D"]))
@@ -60,7 +60,7 @@ for key, r in rows.items():
     arm, name, N, sig, k, seed = key
     _, _, tr = dense_truth(name, k)
     u, u_xx = tr["u"].ravel(), tr["u_xx"].ravel()
-    g_true = np.zeros_like(u) if name == "g0" else -u**3
+    g_true = true_g(name, u)[0]
     dg  = g_hat_of(r, u) - g_true            # error of the learned g, point by point
     dnu = (r["nu_hat"] - NU) * u_xx          # error of nu, as it enters the equation
     cos      = dg @ dnu / (n(dg) * n(dnu))   # -1 = the two errors cancel, 0 = unrelated, +1 = add up

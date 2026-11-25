@@ -15,7 +15,7 @@ import json
 import numpy as np, sympy as sp, torch
 from discovery.criterion import columns, u, JET
 from discovery.fingerprint import normalise, count_by_gap, N_POINTS
-from discovery.noise_gap import CASES, gap_at
+from discovery.noise_gap import CASES, ALL_CASES, gap_at
 from discovery.stage0_floor import truth_jets
 from pinn.surrogate import RESULTS, MODELS
 from pinn.learned_g import MLPG
@@ -56,7 +56,7 @@ def eps_eff(uu, g, g1):
 
 
 def points(name, k, it, ix):
-    x, t, J = truth_jets(name, k, CASES[name][0])
+    x, t, J = truth_jets(name, k, ALL_CASES[name][0])
     jd = {key: J[key][it, ix] for key in ("u", "u_x", "u_xx", "u_xxx")}
     jd["x"], jd["t"] = x[ix], t[it]
     return jd

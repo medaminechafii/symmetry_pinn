@@ -65,11 +65,11 @@ def make_dense(name, eps):
         U_all.append(solve_burgers_saved(u0, steps, g))
     np.savez(DATA / f"dense_{name}.npz", x=x, t=t[::save_every], U=U_all, nu=nu, seeds=np.arange(3))
 
-def make_sparse(name):
+def make_sparse(name, n_list=(1000,)):
     d = np.load(DATA / f"dense_{name}.npz")
     xg, tg, U, nu_ = d["x"], d["t"], d["U"], d["nu"]
     K = U.shape[0]
-    for n_obs in [1000]:                             # N=1000 first
+    for n_obs in n_list:
         for sigma in SIGMAS:
             seed = n_obs + round(100*sigma)          # same rule as make_sparse.py
             rng = np.random.default_rng(seed)
@@ -86,7 +86,15 @@ def make_sparse(name):
                   f"rms noise / std(u) = {np.std(u_obs - u_clean) / np.std(U):.3f}")
 
 if __name__ == "__main__":
-    for tag, eps in EPS.items():
-        make_dense(f"cubic_{tag}", eps)
-        make_sparse(f"cubic_{tag}")
+    # python -m experiments.make_near_sym                              # all eps, N = 1000 (as before)
+    # python -m experiments.make_near_sym --eps e003 e01 --n 200 1000  # false-positive control data
+    # Same seeds as make_sparse.py: same observation points and noise draws as the cubic files.
+    import argparse
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--eps", nargs="+", choices=list(EPS), default=list(EPS))
+    ap.add_argument("--n", nargs="+", type=int, default=[1000])
+    args = ap.parse_args()
+    for tag in args.eps:
+        make_dense(f"cubic_{tag}", EPS[tag])
+        make_sparse(f"cubic_{tag}", args.n)
         

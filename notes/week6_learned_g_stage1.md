@@ -233,3 +233,45 @@ Normalisation does not change exact null spaces; on approximate ones skipping it
 - g0: no reference for "g_hat consistent with zero".
 - Scripts: discovery/stage0_floor.py, eps_calibration.py, stage0b_learned.py, stage0b_general.py, eps_eff_check.py,
   attribution_check.py, derivative_powerlaw_check.py, deflated_count_check.py, raw_vs_sub_learned.py.
+
+## 9. Symmetry loss with the true generators, and the weight-decay baseline (2026-11-24 / 25)
+Setup for both: poly arm, N = 200, sigma = 3%, k = 0-2, seeds 0-2, nu learned from 0.05, lambda = 1. Same cells as stage 1.
+- Symmetry loss: L = L_data + lambda L_PDE + mu L_sym, L_sym = mean of S^2 over the generators of the case
+  (S = pr V(Delta) - lambda Delta), network jets detached, so only g_hat feels it. `--sym-mu`, script run_sym_pilot.sh.
+- Weight decay: L = L_data + lambda L_PDE + wd * sum c_k^2. `--g-wd`, script run_wd_pilot.sh (54 models).
+  Note: wd = 1e-4 is stored as 0.0001 in metrics.jsonl, and the logs are named ..._wd1e-4_....
+- Read with `python -m experiments.sym_coeffs [--wd 1e-6 1e-5 1e-4]` and `python -m experiments.analyse_learned_g_all --mu m | --wd w`.
+
+### 9.1 Results (medians over 9 runs)
+| case | stage 1 | mu 0.01 / 0.1 / 1 | wd 1e-6 / 1e-5 / 1e-4 |
+|---|---|---|---|
+| cubic err_g | 0.217 | 0.181 / 0.167 / 0.156 | 0.201 / 0.429 / 0.626 |
+| g0 err_g | 0.165 | 0.020 / 0.0028 / 0.0003 | 0.164 / 0.114 / 0.060 |
+| g0 nu error | 1.0% | ... / ... / 0.4% | 1.2% / 1.3% / 1.3% |
+| cubic nu error | | | 1.7% / 0.8% / 3.0% |
+| data/noise | 0.77-0.95 | unchanged | up to 1.03 (k0), 1.21 (k1) at 1e-4 |
+
+### 9.2 What the coefficients show (experiments/sym_coeffs.py)
+- Symmetry loss, mu >= 0.1: c1, c2, c4, c5 go to about 0. The cubic error left is c3 alone, set by the data draw
+  (mu = 1: k0 -0.85, k1 -1.19, k2 -0.98; true -1). Seeds agree to about 0.01, so each cell is effectively 3 independent samples.
+  c3 moves with nu_hat (dc3 about 50-70 dnu). Reason: scaling gives S = sum (k-3) c_k u^k, so c3 (and nu) are free.
+  The symmetry fixes the form of g, not its size.
+- Weight decay: c3 shrinks monotonically toward 0 (k0: -0.89, -0.69, -0.33, -0.06 for wd 0, 1e-6, 1e-5, 1e-4).
+  c5 is cleared already at 1e-6; c4 only at >= 1e-5. Two side effects: wd creates c1 (-0.04 to -0.07) and raises
+  nu_hat (to 0.103-0.106). The lost cubic damping is replaced by the cheapest substitutes: c1 (u^1 is the largest power
+  for |u| < 1, so the data curvature a is large and the shrink factor a/(a+w) small) and extra viscosity (no penalty).
+  Same c3-nu coupling as above: the data alone barely separate a cubic source from extra viscosity.
+- g0: Galilean gives S = -g', so the symmetry loss forces g_hat = 0 exactly; weight decay only pulls toward 0 against the data
+  (c3 still -0.06 for k1 at 1e-4).
+
+### 9.3 Conclusion
+The symmetry-loss gain is not "shrink g_hat". At every wd tried, both cases are worse than with mu = 0.01; one wd cannot serve
+both cases (at 1e-4 g0 is still 200x worse than mu = 1 while cubic has already gone from 0.22 to 0.63). The symmetry loss improves
+both with one mu. Not shown: whether wd = 1e-3 on g0 alone reaches about 3e-4 (likely, by forcing g_hat -> 0), but choosing wd
+per case needs the answer in advance.
+Prediction record: the user predicted "wd clears c4, c5 but pulls c3 toward 0" (c3 right; c4 only at >= 1e-5).
+I predicted wd may also clear c4, c5 and bias c3 (same); neither of us predicted the c1 / nu_hat compensation.
+
+### 9.4 Next
+False-positive control on the eps datasets (8.7), then the alignment check and discovered generators (candidates from the
+singular vectors, accepted by held-out data error).

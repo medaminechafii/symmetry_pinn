@@ -34,6 +34,18 @@ def load_rows(arm=None, mu=0.0, names=None, wd=0.0):
     return keep
 
 
+def true_g(name, u):
+    """True g and g' of a case: g0 -> 0, cubic -> -u^3, cubic_<tag> -> -u^3 + eps u (eps from discovery.noise_gap.EPS)."""
+    if name == "g0":
+        return 0 * u, 0 * u
+    if name == "cubic":
+        eps = 0.0
+    else:
+        from discovery.noise_gap import EPS
+        eps = EPS[name.split("_", 1)[1]]
+    return -u**3 + eps * u, -3 * u**2 + eps
+
+
 def sym_tag(r):
     return f"_sym{'+'.join(r['sym'])}_mu{r['mu']:g}" if r.get("sym") and mu_of(r) > 0 else ""
 

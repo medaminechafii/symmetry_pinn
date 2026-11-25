@@ -13,7 +13,7 @@ Check 2  power-law misfit.  Best c*u^p (p = 1..5) for g_hat, relative misfit ||g
     python -m discovery.derivative_powerlaw_check --arm poly
 """
 import argparse
-from pinn.runs import load_rows, stem as run_stem
+from pinn.runs import load_rows, true_g, stem as run_stem
 import json
 import numpy as np
 from discovery.stage0b_general import (g_poly, g_mlp, load_mlp, points, sample_indices, gap_from_g)
@@ -24,11 +24,13 @@ rms = lambda a: np.sqrt(np.mean(np.asarray(a) ** 2))
 
 
 def error_stats(uu, g, g1, name):
-    gt, g1t = (np.zeros_like(uu), np.zeros_like(uu)) if name == "g0" else (-uu**3, -3 * uu**2)
+    gt, g1t = true_g(name, uu)
     d, d1 = g - gt, g1 - g1t
     s0, s1 = rms(uu**3), rms(3 * uu**2)
+    # B is the scaling breaking of the LEARNED equation, u g_hat' - 3 g_hat.  It equals u delta' - 3 delta only when
+    # the true g is homogeneous (g0, cubic); for the eps data the true g itself breaks scaling.
     return dict(e_val=rms(d) / s0, e_der=rms(d1) / s1, u_dprime=rms(uu * d1) / s0,
-                three_d=rms(3 * d) / s0, B=rms(uu * d1 - 3 * d) / s0)
+                three_d=rms(3 * d) / s0, B=rms(uu * g1 - 3 * g) / s0)
 
 
 def powerlaw(uu, g):
@@ -83,10 +85,10 @@ if __name__ == "__main__":
         res.setdefault((name, r["N"], r["sig"]), []).append(st)
 
     keys = ("e_val", "e_der", "u_dprime", "three_d", "B")
-    print(f"{'case':6s} {'N':>5s} {'sig':>3s} | " + " ".join(f"{k:>9s}" for k in keys) + " | best p (counts)  misfit med")
+    print(f"{'case':10s} {'N':>5s} {'sig':>3s} | " + " ".join(f"{k:>9s}" for k in keys) + " | best p (counts)  misfit med")
     for (name, N, sig), v in sorted(res.items(), key=lambda kv: (kv[0][0], -kv[0][1], kv[0][2])):
         med = [np.median([s[k] for s in v]) for k in keys]
         ps = np.bincount([s["p"] for s in v], minlength=6)[1:]
-        mis = np.median([s["mis"] for s in v]) if name == "cubic" else float("nan")
-        print(f"{name:6s} {N:5d} {sig:3d} | " + " ".join(f"{m:9.3f}" for m in med) +
+        mis = np.median([s["mis"] for s in v]) if name != "g0" else float("nan")
+        print(f"{name:10s} {N:5d} {sig:3d} | " + " ".join(f"{m:9.3f}" for m in med) +
               f" | p=1..5: {ps.tolist()}  {mis:8.3f}")
