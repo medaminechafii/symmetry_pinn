@@ -160,3 +160,22 @@ Implemented (2026-11-26):
 Observation from a short smoke run (300 Adam steps, not a result): at sigma = 1% the held-out error against the noisy
 observations is dominated by the noise (3.7e-6 vs 5.8e-8 against the clean u). So R based on noisy observations is
 pulled toward 1; a wrong g_hat must change u a lot in t > 1.5 to show. The pilot will show whether this is a problem.
+
+### 8.1 Decision rule FIXED (user, 2026-11-26, from the delta pilot, section 12 of week6_learned_g_stage1.md)
+- Two settings, sigma 1% and noise-free, each with its own delta; both turned out equal:
+  reference E_current = the BETTER (smaller held-out error) of 2 baseline seeds; accept a candidate if R <= 1 + delta,
+  delta = 0.1 (sigma 1% and sigma 0, poly arm).
+- Pilot values with this reference: scaling (true) R 0.95-0.99 (1%), 0.05-0.67 (0%); Galilean (false) R 11-12 (1%),
+  689-10626 (0%). Seed-1 baseline vs seed-0 differed by up to 12x without noise: why one baseline is not enough.
+- Development runs: candidates trained with 1 seed (faster; known small asymmetry against the candidate).
+  FINAL evaluation runs: candidates ALSO best of 2 seeds (fair comparison, about twice the cost).
+- Allowed before the real loop runs: more baseline seeds (3 would be better). NOT allowed after seeing loop results:
+  any change of delta or of the reference rule.
+- MLP arm: own pilot (run_delta_pilot.sh MLP), delta fixed the same way before any MLP loop run.
+
+### 8.2 g0 one symmetry at a time (user's idea; "perfect proposals" reference for the loop)
+run_g0_steps.sh, summary experiments/g0_steps.py. g0, poly, N 1000, held out t > 1.5, sigma 1% and 0, k 0-2.
+Same general loss (no new math), TRUE generators chosen by hand: scaling -> scaling+Galilean -> all three (cumulative,
+the order the loop would add them), then Galilean alone and projective alone (optional: which symmetry does the work).
+With several generators the loss is the MEAN over them, so each gets weight mu/m. Reference = better of 2 baseline seeds.
+Measures: R, err_g (true g = 0), nu error. 42 trainings. Runs after the MLP delta pilot (run_overnight.sh).

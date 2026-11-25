@@ -356,3 +356,30 @@ What it says:
   linear in the generator), so enforcing a mixed candidate enforces something true.
 - eps data: the SVD proposes scaling as closely as for cubic. The SVD cannot reject a false symmetry; the test step must.
 - Caveat: true jets were used here (as in section 8). In the real loop the jets come from the network (8.5: slightly worse).
+
+## 12. Delta pilot: can the held-out error tell a true symmetry from a false one? (2026-11-26)
+Setup (run_delta_pilot.sh, experiments/delta_pilot.py; design notes/symmetry_loop_design.md 2.6): cubic, poly,
+N = 1000, sigma 1% and 0%, trained on t <= 1.5, held out t > 1.5 (about 260 points). Per k = 0-2: baseline seeds 0 and 1,
+seed 0 + general symmetry loss (mu = 1) with exact scaling (true) and with Galilean (false for cubic).
+R = held-out error / held-out error of baseline seed 0 (E vs noisy observations; R_clean vs clean u, analysis only).
+
+| | sigma 1%: R (R_clean) | sigma 0%: R |
+|---|---|---|
+| base seed 1 (chance) | 0.995-1.024 (1.05-1.49) | 0.08-3.27 |
+| scaling (true) | 0.953-0.982 (0.13-0.27) | 0.049-0.152 |
+| Galilean (false) | 10.9-12.0 (292-405) | 689-2260 |
+
+- Separation is huge at both noise levels: the false symmetry raises the held-out error 11-12x (1%) and 700-2300x (0%).
+  With Galilean g_hat -> 0 (all c about 0) and nu_hat rises to 0.114-0.122 to replace the lost damping; this fits the
+  training window but fails in t > 1.5. So the time-window split works for a very wrong symmetry.
+- The true symmetry never raises the held-out error: R < 1 everywhere. At 1% the noise hides most of the gain
+  (R 0.95-0.98, but R_clean 0.13-0.27); without noise the gain is visible (R 0.05-0.15).
+- Noise-free, the baseline itself varies a lot between seeds (factor 0.08-3.3): the error (1e-8 to 1e-7) is set by how far
+  the optimiser got, not by the data. A ratio to a single baseline is therefore much less stable without noise.
+- Scaling also fixes c3 at N = 1000: c3 = -0.993 to -1.004 (1%), -0.996 to -1.002 (0%), c1, c2, c4, c5 about 0.
+  err_g 0.002-0.007 vs baseline 0.03-0.04 at 1% (err_g at the data's u values, |u| < 0.75).
+  Unlike the mu pilot (N = 200, 3%), where c3 was off by up to 19%.
+- Correction (mine): the first version of delta_pilot.py computed err_g on a u grid [-1.5, 1.5], twice the range of the
+  data; there c5 u^5 is blown up, which gave baseline err_g 0.07-0.78. Fixed to the data's u values (0.03-0.04 for the
+  k = 0 baselines, checked from the printed coefficients). The other columns are unaffected.
+Caveats: 3 data draws per cell; only a very wrong false symmetry was tested. A nearly-true one (eps 0.1) is the real test.
