@@ -16,9 +16,9 @@ def wd_of(r):
     return float(r.get("g_wd") or 0.0)
 
 
-def load_rows(arm=None, mu=0.0, names=None, wd=0.0):
-    """Learned-g rows (learn_nu, g_model == arm, or poly/MLP if arm is None) with symmetry weight mu and
-    weight decay wd."""
+def load_rows(arm=None, mu=0.0, names=None, wd=0.0, holdout=None):
+    """Learned-g rows (learn_nu, g_model == arm, or poly/MLP if arm is None) with symmetry weight mu,
+    weight decay wd and held-out split `holdout` (None = all points trained on, the runs before the loop)."""
     rows = [json.loads(l) for l in open(ps.RESULTS / "oracle" / "metrics.jsonl")]
     keep = []
     for r in rows:
@@ -27,6 +27,8 @@ def load_rows(arm=None, mu=0.0, names=None, wd=0.0):
         if (r.get("g_model") != arm) if arm else (r.get("g_model") not in ("poly", "MLP")):
             continue
         if abs(mu_of(r) - mu) > 1e-12 or abs(wd_of(r) - wd) > 1e-15:
+            continue
+        if r.get("holdout") != holdout:
             continue
         if names and r["name"] not in names:
             continue
@@ -47,7 +49,14 @@ def true_g(name, u):
 
 
 def sym_tag(r):
+    if r.get("gen_file") and mu_of(r) > 0:
+        from pathlib import Path
+        return f"_gen{Path(r['gen_file']).stem}_mu{r['mu']:g}"
     return f"_sym{'+'.join(r['sym'])}_mu{r['mu']:g}" if r.get("sym") and mu_of(r) > 0 else ""
+
+
+def ho_tag(r):
+    return f"_ho{r['holdout']:g}" if r.get("holdout") is not None else ""
 
 
 def wd_tag(r):
@@ -58,4 +67,4 @@ def stem(r):
     """Model file stem of a learned-g run, as written by pinn.pinn_oracle."""
     var = ps.variant_tag(r.get("ncolloc", 2000), r.get("cos", False), r.get("steps", 4000), r.get("feat", 1))
     return (f"oracle_{r['name']}_N{r['N']}_s{r['sig']}_lam{r['lam_tag']}_k{r['k']}{var}"
-            f"_nu{r['nu0']}_{r['g_model']}{sym_tag(r)}{wd_tag(r)}_seed{r['seed']}")
+            f"_nu{r['nu0']}_{r['g_model']}{ho_tag(r)}{sym_tag(r)}{wd_tag(r)}_seed{r['seed']}")

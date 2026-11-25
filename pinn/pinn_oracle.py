@@ -6,6 +6,7 @@ from discovery.noise_gap import CASES,ALL_CASES,EPS
 from pinn.surrogate import dense_truth, surrogate_jets, rel_error
 from pinn.learned_g import PolyG,MLPG
 from pinn.sym_loss import sym_loss, CASE_GENS
+from pinn.sym_general import network_jets, sym_loss_general
 
 G_TORCH = {"g0": lambda u: torch.zeros_like(u), "cubic": lambda u: -u**3}
 
@@ -13,11 +14,13 @@ G_TORCH.update({f"cubic_{tag}": lambda u, e=eps: -u**3 + e*u for tag, eps in EPS
 
 def train_pinn(x_obs, t_obs, u_obs, g_fun, lam=1.0, n_colloc=2000,seed=0,
                adam_steps=4000, verbose=True, cos=False, K=1,learn_nu = False,nu0 = 0.05,g_model=None,
-               sym=None, mu=0.0, sym_detach=True, lbfgs_iter=2000, g_wd=0.0):
+               sym=None, mu=0.0, sym_detach=True, lbfgs_iter=2000, g_wd=0.0, gen=None):
     """sym: list of generator names (pinn.sym_loss.GENERATORS); the symmetry loss mu * L_sym is only computed
     and added when sym is given AND mu > 0, so mu = 0 reproduces the run without it exactly.
     g_wd: weight-decay baseline, adds g_wd * (sum of squared parameters of the learned g) to the loss; it is only
-    computed when g_wd > 0 and g is learned, so g_wd = 0 reproduces the run without it exactly."""
+    computed when g_wd > 0 and g is learned, so g_wd = 0 reproduces the run without it exactly.
+    gen: (V, scale) for the GENERAL symmetry loss (pinn.sym_general): V = unit generator vectors in normalised
+    coordinates, scale = fixed column scales; used instead of sym when given (with mu > 0)."""
     if g_model is not None:
         torch.manual_seed(seed)
         if isinstance(g_model, str):
@@ -39,9 +42,11 @@ def train_pinn(x_obs, t_obs, u_obs, g_fun, lam=1.0, n_colloc=2000,seed=0,
         u, u_x, u_t, u_xx, _ = jet(model, xc, tc)
         res  = u_t + u*u_x - nu_now()*u_xx - g_fun(u)          # P1: the PDE residual
         return data, torch.mean(res**2)
-    use_sym = bool(sym) and mu > 0
+    use_sym = (bool(sym) or gen is not None) and mu > 0
     sym_hist = []
     def sym_term():
+        if gen is not None:
+            return sym_loss_general(network_jets(model, xc, tc), g_fun, nu_now(), *gen)
         return sym_loss(model, g_fun, nu_now(), xc, tc, sym, detach=sym_detach)
     use_wd = g_wd > 0 and g_model is not None
     def wd_term():
@@ -135,6 +140,10 @@ if __name__ == "__main__":
     ap.add_argument("--mu", type=float, default=0.0, help="weight of the symmetry loss (0 = off)")
     ap.add_argument("--g-wd", type=float, default=0.0,
                     help="weight-decay baseline: weight of sum(params of learned g)^2 (0 = off; needs --g-model)")
+    ap.add_argument("--holdout", type=float, default=None,
+                    help="hold out all observation points with t > this value (never trained on; error stored)")
+    ap.add_argument("--gen-file", default=None,
+                    help="npz with V (unit vectors) and scale for the general symmetry loss (discovery.make_gen_file); needs --mu")
     args = ap.parse_args()
     steps = args.steps
     smoke = args.smoke
@@ -160,12 +169,23 @@ if __name__ == "__main__":
                             if args.sym and args.mu > 0:
                                 gens = CASE_GENS[name] if args.sym == ["auto"] else list(args.sym)
                             sym_tag = f"_sym{'+'.join(gens)}_mu{args.mu:g}" if gens else ""
+                            gen = None
+                            if args.gen_file and args.mu > 0:
+                                from pathlib import Path
+                                gf = np.load(args.gen_file)
+                                gen = (gf["V"], gf["scale"])
+                                sym_tag = f"_gen{Path(args.gen_file).stem}_mu{args.mu:g}"
+                            ho_tag = f"_ho{args.holdout:g}" if args.holdout is not None else ""
                             wd_tag = f"_wd{args.g_wd:g}" if args.g_wd > 0 and args.g_model is not None else ""
-                            stem = f"oracle_{name}_N{n_obs}_s{sig}_lam{tag}_k{k}{var}{mis}{nutag}{g_tag}{sym_tag}{wd_tag}_seed{seed}"
+                            stem = f"oracle_{name}_N{n_obs}_s{sig}_lam{tag}_k{k}{var}{mis}{nutag}{g_tag}{ho_tag}{sym_tag}{wd_tag}_seed{seed}"
                             if not smoke and (MODELS / f"{stem}.pt").exists():
                                 print(f"skip {stem} (exists)"); continue
                             sel = s["exp_id"] == k
                             xo, to, uo = s["x_obs"][sel], s["t_obs"][sel], s["u_obs"][sel]
+                            uc = s["u_clean"][sel]
+                            hold = (to > args.holdout) if args.holdout is not None else np.zeros(len(to), bool)
+                            xh, th, uh, uch = xo[hold], to[hold], uo[hold], uc[hold]
+                            xo, to, uo = xo[~hold], to[~hold], uo[~hold]
                             g_loss = G_TORCH[args.loss_g or name]
                             g_model = args.g_model
                             model, final, history, grad_his = train_pinn(
@@ -173,7 +193,7 @@ if __name__ == "__main__":
                                 g_loss, lam=lam, adam_steps=steps, seed=seed, verbose=False,
                                 n_colloc=args.ncolloc, cos=args.cos, K=args.feat,learn_nu = learn_nu is not None,
                                 nu0 = learn_nu if learn_nu is not None else 0.05,g_model=g_model,
-                                sym=gens, mu=args.mu, g_wd=args.g_wd)
+                                sym=gens, mu=args.mu, g_wd=args.g_wd, gen=gen)
                             g = model.extras["g_model"]
                             if not smoke:
                                 torch.save(model.state_dict(), MODELS / f"{stem}.pt")
@@ -187,6 +207,11 @@ if __name__ == "__main__":
                             noise_var = (sig/100*truth["u"].std())**2
                             with torch.no_grad():
                                 data_final = torch.mean((model(torch.tensor(xo), torch.tensor(to)) - torch.tensor(uo))**2).item()
+                                ph = model(torch.tensor(xh), torch.tensor(th)).numpy() if hold.any() else None
+                            err_hold = float(np.mean((ph - uh)**2)) if ph is not None else None        # vs noisy obs (decision)
+                            err_hold_clean = float(np.mean((ph - uch)**2)) if ph is not None else None # vs clean u (analysis only)
+                            if ph is not None:
+                                print(f"   held-out (t > {args.holdout:g}, {int(hold.sum())} pts): err_hold {err_hold:.3e}  vs clean {err_hold_clean:.3e}")
                             n_lbfgs = len(history) - steps               # closure calls in the L-BFGS stage
                             m = {
                                 "name": name, "N": n_obs, "sig": sig, "k": k, "lam": lam, "lam_tag": tag,
@@ -209,7 +234,10 @@ if __name__ == "__main__":
                                  "sym": model.extras["sym"],
                                  "mu": model.extras["mu"],
                                  "sym_final": model.extras["sym_final"],
-                                 "g_wd": model.extras["g_wd"]
+                                 "g_wd": model.extras["g_wd"],
+                                 "holdout": args.holdout, "n_hold": int(hold.sum()),
+                                 "err_hold": err_hold, "err_hold_clean": err_hold_clean,
+                                 "gen_file": args.gen_file if gen is not None else None,
                                  }
                             if not m["lbfgs_ran"] or m["underfit"]:
                                 ratio = m["data_over_noise"]

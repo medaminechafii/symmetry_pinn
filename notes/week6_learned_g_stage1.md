@@ -327,3 +327,32 @@ c3@1.0 is 0 everywhere except one cubic poly cell (0.11).
 ### 10.3 Next
 Noise-free stage 1 (sigma = 0, 72 models: g0 and cubic, N 200 and 1000, both arms) to see whether the eps_eff floor of about
 0.03 drops without noise (my prediction: about the same). Then candidate testing with the symmetry loss (roadmap step 4).
+
+## 11. Alignment check: are the first SVD candidates close to the true symmetries? (2026-11-26)
+`python -m discovery.alignment_check --calib | --arm poly | --arm MLP` (stage-1 runs, no training).
+Same SVD as section 8 (30 substituted columns, true jets, learned g_hat, g_hat', nu_hat). Candidates A, B, C = the singular
+vectors right after the 2 trivial ones (d/dx, d/dt; exactly 2 values were dropped in every learned run).
+res(j) = part of the true generator NOT in span{d/dx, d/dt, first j candidates} (least-squares projection, normalised
+coordinates) = sin(angle): 0 = contained, 0.1 ~ 6 deg, 0.3 ~ 17 deg, 1 = unrelated.
+
+| data, arm | generator | res(1) med | res(2) med | res(3) med |
+|---|---|---|---|---|
+| cubic poly | scaling | 0.09-0.28 (max up to 0.33-0.99) | 0.07-0.18 | 0.04-0.12 |
+| cubic MLP | scaling | 0.29-0.50 | 0.16-0.33 | 0.10-0.18 |
+| g0 poly | scaling | 0.31-1.00 | 0.14-0.26 | 0.06-0.17 |
+| g0 poly | Galilean / projective | 0.68-0.99 | 0.61-0.79 | 0.11-0.17 at N = 1000, 0.29-0.72 at N <= 200 |
+| g0 MLP | scaling | 0.17-0.83 | 0.04-0.08 (0.23 at N = 50, 3%) | 0.00-0.07 |
+| g0 MLP | Galilean / projective | 0.68-1.00 | 0.51-0.86 | 0.01-0.07 (N = 1000; N = 200 at 1%), 0.15-0.23 otherwise |
+| eps 0.03 / 0.1 poly | scaling (false) | 0.13-0.28 | 0.07-0.17 | 0.06-0.15 |
+| eps 0.03 / 0.1 MLP | scaling (false) | 0.29-0.45 | 0.15-0.22 | 0.09-0.17 |
+Exact equations (--calib): cubic res = 0; eps 0.03 / 0.1: 0.05 / 0.15 at j = 1; exact g0 has three exact symmetries, so
+the SVD order among them is arbitrary (only res(3) = 0 is meaningful).
+
+What it says:
+- Proposing works: the true symmetries are within the first 2-3 candidates in most runs (cubic poly best; g0 MLP best).
+- The candidates are not exact (about 5-30 deg off), and sometimes the true one is B or C instead of A.
+- g0: A is not scaling, but scaling is within the first two; Galilean and projective only appear as combinations of the
+  three candidates. That is acceptable: any linear combination of symmetry generators is a symmetry (the condition is
+  linear in the generator), so enforcing a mixed candidate enforces something true.
+- eps data: the SVD proposes scaling as closely as for cubic. The SVD cannot reject a false symmetry; the test step must.
+- Caveat: true jets were used here (as in section 8). In the real loop the jets come from the network (8.5: slightly worse).
