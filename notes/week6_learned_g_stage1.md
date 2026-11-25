@@ -275,3 +275,55 @@ I predicted wd may also clear c4, c5 and bias c3 (same); neither of us predicted
 ### 9.4 Next
 False-positive control on the eps datasets (8.7), then the alignment check and discovered generators (candidates from the
 singular vectors, accepted by held-out data error).
+
+## 10. False-positive control: stage 1 on near-symmetric data (2026-11-25)
+Question: the detector found scaling in some stage-1 cubic runs (8.4: 11 / 54 poly at J_min = 0.5). Would it also "find"
+scaling on data where scaling is broken? If yes, those detections are not evidence.
+
+Setup (run_eps_control.sh, 144 models): stage 1 only (learned g and nu, NO symmetry loss, no weight decay), same settings
+as run_lg_all.sh, on data from g = -u^3 + eps u, eps = 0.03 (e003, about 15% of the cubic term) and 0.1 (e01, about 50%).
+N 200 and 1000, sigma 1 and 3%, poly and MLP, k 0-2, seeds 0-2. Data: experiments/make_near_sym.py --eps e003 e01 --n 200 1000.
+The eps data use the same observation points and the same noise draws (rescaled by 5-7%) as the cubic data, so each eps run
+has a twin cubic run (same arm, N, sigma, k, seed) from stage 1; the twins differ only by the eps u term.
+Analysis: `python -m experiments.eps_control --arm poly|MLP`.
+(Counting tip: grep 'cubic_e0' also matches 72 older oracle rows on e001-e03; count learned rows with g_model and learn_nu.)
+
+Measures:
+- gap3: log10(s_4 / s_3) of the 30 substituted columns (the SVD detector; large = scaling looks exact).
+- c3@0.5, c3@1.0: fraction of runs with deflated count 3 (scaling declared) at J_min 0.5 / 1.0.
+- p3, misfit: fraction with best power law u^3; relative distance of g_hat from the best c u^p.
+- eps_eff = RMS(B) / (2 RMS(u)), B = u g_hat' - 3 g_hat. B = 0 is the scaling condition; for g = -u^3 + eps u, B = -2 eps u,
+  so eps_eff = eps exactly: "the eps that breaks scaling by the same amount as g_hat".
+- win: fraction of twin pairs where the cubic twin has the larger gap3 (1 = detector always prefers the symmetric twin,
+  0.5 = coin flip).
+
+### 10.1 Results (medians over 9 runs per cell; ranges over the 4 cells N x sigma)
+| | exact equation | poly, learned | MLP, learned |
+|---|---|---|---|
+| gap3 cubic / e003 / e01 | 13.9 / 1.03 / 0.57 | 0.27-0.43 / 0.25-0.46 / 0.38-0.44 | 0.22-0.33 / 0.20-0.36 / 0.18-0.40 |
+| win e003 / e01 | - | 0.44-0.56 / 0.11-0.44 | 0.11-0.44 / 0.22-0.44 |
+| c3@0.5 cubic / e003 / e01 | 1 / 1 / 1 | 0-0.22 / 0-0.22 / 0.11-0.44 | 0 / 0-0.11 / 0 |
+| eps_eff cubic / e003 / e01 | 0 / 0.030 / 0.100 | 0.024-0.036 / 0.029-0.038 / 0.087-0.095 | 0.030-0.041 / 0.032-0.036 / 0.082-0.094 |
+| p3 cubic / e003 / e01 | 1 / 1 / 0 | 1 / 1 / 0 | 1 / 1 / 0-0.22 |
+| err_g cubic / e003 / e01 | 0 | 0.054-0.212 / 0.046-0.190 / 0.038-0.187 | 0.068-0.232 / 0.065-0.207 / 0.052-0.196 |
+c3@1.0 is 0 everywhere except one cubic poly cell (0.11).
+
+### 10.2 What it says
+- The SVD gap cannot tell symmetric from broken data: win 0.11-0.56 in all 16 cells (never near 1), and scaling is declared
+  as often or more often on the broken data. The earlier cubic detections (8.4) are not evidence.
+- A test of the specific candidate (scaling) works above a floor: eps_eff of g_hat recovers eps = 0.1 almost exactly
+  (0.08-0.095) and is clearly above the cubic value (0.024-0.041) in every cell; the power law rejects u^3 for eps = 0.1.
+  eps = 0.03 is not separable: stage 1 itself adds a fake breaking of eps_eff about 0.03 (the stray c1, c4, c5 terms).
+  Resolution of the candidate test: between eps 0.03 and 0.1 (15-50% of the cubic term).
+- The floor is about the same at 1% and 3% noise (poly N = 1000: 0.024 vs 0.028) -> noise is probably not the limit.
+- err_g is similar for all three data sets, so stage 1 learns them equally well; the comparison is fair.
+- Why the two differ: the gap compares all 30 directions at once and depends on the whole spectrum; eps_eff asks one question
+  about one candidate. Consequence for the method: use the SVD only to propose candidates, and decide on each candidate
+  with a separate test (breaking measure or held-out fit).
+- Caveat: for poly the seeds agree closely, so each cell is about 3 independent data draws; single win values are rough.
+- Prediction record: I guessed "poor separation at 0.03, maybe slightly better at 0.1" for the gap; the 0.1 part was wrong
+  (no better). No prediction from the user recorded.
+
+### 10.3 Next
+Noise-free stage 1 (sigma = 0, 72 models: g0 and cubic, N 200 and 1000, both arms) to see whether the eps_eff floor of about
+0.03 drops without noise (my prediction: about the same). Then candidate testing with the symmetry loss (roadmap step 4).
