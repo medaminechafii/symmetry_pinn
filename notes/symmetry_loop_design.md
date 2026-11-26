@@ -1,6 +1,7 @@
 # Design proposal: the symmetry loop (propose from the SVD, enforce, test, repeat)
 
-Status: PROPOSAL for review (2026-11-26). Nothing here is implemented yet.
+Status: PROPOSAL for review (2026-11-26). Sections 1, 2.5-2.7 and 8.3 are SUPERSEDED by section 9 (2026-11-27);
+the parts 2.1-2.4 (held-out, proposing, cleaning, general loss) still apply.
 Idea: the user's (one candidate at a time from the SVD, enforce it, keep it if it does not hurt, re-check, continue).
 Evidence it can work: section 11 of week6_learned_g_stage1.md (the true symmetries are within the first 2-3 SVD candidates).
 Evidence for the test step: section 10 (the SVD cannot reject a false symmetry, so something else has to).
@@ -191,3 +192,40 @@ Known weakness: if earlier true symmetries lowered the error a lot (noise-free: 
 symmetry can raise it again and still stay below 1.1 x baseline. Very wrong ones are still caught.
 Deferred (user, for later): false symmetry AFTER a true one (cubic: scaling+Galilean, scaling+projective vs scaling;
 12 trainings) -> shows how large this weakness is. The eps data in the final evaluation test the mild case.
+
+
+## 9. THE LOOP, final version (user's design, 2026-11-27). Supersedes sections 1, 2.5-2.7 and 8.3.
+Idea (user): every candidate gets its OWN training "baseline + that one symmetry" and is compared with the baseline;
+the accepted ones are then trained together. A better model may reveal new candidates -> repeat in passes.
+
+```
+parameters: max_rejections (2), max_candidates (5), max_passes (2), delta (0.1), mu (1), n_base_seeds (2)
+
+0. split: train on t <= 1.5, held out t > 1.5
+1. BASELINE B: stage 1 (L_data + lambda L_PDE), n_base_seeds seeds, keep the one with the smaller held-out error E_B
+   accepted = [],  model M = B
+2. PASS p = 1, 2, ..., max_passes:
+     a. SVD of model M (network jets, g_hat, nu_hat); drop d/dx, d/dt; remove the directions in `accepted`
+        candidates = the next singular vectors, in order (smallest singular value first)
+     b. for each candidate v, until max_rejections rejections or max_candidates tried:
+          train B's setup + mu L_sym(v)   (from scratch, same seed and split; v ALONE)
+          R = E_v / E_B;   accept (add v to `accepted`) if R <= 1 + delta, else reject
+     c. if no new candidate was accepted in this pass -> STOP
+     d. COMBINED training: B's setup + mu L_sym(all accepted)   -> new model M (u, g_hat, nu_hat all retrained)
+        final check: R_comb = E_M / E_B <= 1 + delta; if it fails, report it (a candidate that passed alone is
+        suspicious together) and keep the previous M
+3. RESULT: the last M (g_hat, nu_hat) and the list `accepted`
+```
+Why tested alone against the baseline: this is exactly the situation the pilot calibrated (true 0.93-1.00 at 1%,
+0.01-0.17 noise-free; false >= 11). No comparison between two models that are both at the optimiser floor (the
+noise-free problem of section 13.2), and a false candidate cannot hide behind the gains of earlier true ones.
+Why passes: the combined model has a better g_hat, so its SVD can show symmetries the baseline's SVD missed
+(g0: once Galilean forces g_hat = 0, scaling and projective become exact). New candidates are still tested alone
+against B: the better model only supplies better candidates, the test stays the calibrated one.
+Removing accepted directions: they appear exact in the SVD of M only because they were enforced (circular).
+Consequences of accepted symmetries may appear as new candidates; they are tested like any other candidate.
+Expected: cubic -> scaling in pass 1, nothing in pass 2; g0 -> up to 3 directions; eps 0.1 -> none.
+Saving: every training is saved (network, g_hat, nu_hat, split, generators), every decision logged (jsonl).
+Development runs: 1 seed per candidate; final evaluation: candidates best of 2 seeds (section 8.1).
+Deferred: false symmetry after a true one (cubic scaling+Galilean / scaling+projective) now mainly tests the combined
+check of step d.
