@@ -33,11 +33,20 @@ if __name__ == "__main__":
             elif s["step"] == "candidate":
                 r = s["res"]
                 print(f"  pass {s['p']} cand {s['j']}:  R {s['R']:9.3f}  R_clean {s['R_clean']:9.3f}  "
-                      f"{'ACCEPT' if s['accepted'] else 'reject'}   res scal/Gal/proj "
-                      f"{r['scaling']:.2f}/{r['Galilean']:.2f}/{r['projective']:.2f}")
+                      f"{'ACCEPT' if s['accepted'] else ('skip' if s.get('reason') == 'duplicate after training' else 'reject')}"
+                      f"{'' if s['accepted'] or not s.get('reason') or s['reason'] == 'R' else ' (' + s['reason'] + ')'}"
+                      f"   res scal/Gal/proj "
+                      f"{r['scaling']:.2f}/{r['Galilean']:.2f}/{r['projective']:.2f}"
+                      + (f"  raw {s['res_raw']['scaling']:.2f}/{s['res_raw']['Galilean']:.2f}/{s['res_raw']['projective']:.2f}"
+                         if 'res_raw' in s else "")
+                      + (f"  -> trained {s['res_final']['scaling']:.3f}/{s['res_final']['Galilean']:.3f}/"
+                         f"{s['res_final']['projective']:.3f}  drift {s['drift_deg']:.1f} deg"
+                         if s.get('drift_deg') else ""))
             elif s["step"] == "combined":
                 print(f"  pass {s['p']} combined ({s['n_accepted']} accepted):  R {s['R']:.3f}  "
                       f"{'ok' if s['ok'] else 'FAILS check'}   c {fmt_c(s['c'])}")
+            elif s["step"] == "duplicate":
+                print(f"  pass {s['p']} cand {s['j']}:  skipped, already in the accepted span (distance {s['dist']:.3f})")
             elif s["step"] == "stop":
                 print(f"  stop after pass {s['p']}: {s['reason']}")
         if res:

@@ -51,7 +51,7 @@ def true_g(name, u):
 def sym_tag(r):
     if r.get("gen_file") and mu_of(r) > 0:
         from pathlib import Path
-        return f"_gen{Path(r['gen_file']).stem}_mu{r['mu']:g}"
+        return f"_gen{Path(r['gen_file']).stem}_mu{r['mu']:g}" + ("_lg" if r.get("learn_gen") else "")
     return f"_sym{'+'.join(r['sym'])}_mu{r['mu']:g}" if r.get("sym") and mu_of(r) > 0 else ""
 
 

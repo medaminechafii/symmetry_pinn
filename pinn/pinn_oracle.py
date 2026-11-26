@@ -6,7 +6,7 @@ from discovery.noise_gap import CASES,ALL_CASES,EPS
 from pinn.surrogate import dense_truth, surrogate_jets, rel_error
 from pinn.learned_g import PolyG,MLPG
 from pinn.sym_loss import sym_loss, CASE_GENS
-from pinn.sym_general import network_jets, sym_loss_general
+from pinn.sym_general import network_jets, sym_loss_general, LearnableGen
 
 G_TORCH = {"g0": lambda u: torch.zeros_like(u), "cubic": lambda u: -u**3}
 
@@ -14,13 +14,14 @@ G_TORCH.update({f"cubic_{tag}": lambda u, e=eps: -u**3 + e*u for tag, eps in EPS
 
 def train_pinn(x_obs, t_obs, u_obs, g_fun, lam=1.0, n_colloc=2000,seed=0,
                adam_steps=4000, verbose=True, cos=False, K=1,learn_nu = False,nu0 = 0.05,g_model=None,
-               sym=None, mu=0.0, sym_detach=True, lbfgs_iter=2000, g_wd=0.0, gen=None):
+               sym=None, mu=0.0, sym_detach=True, lbfgs_iter=2000, g_wd=0.0, gen=None, learn_gen=False):
     """sym: list of generator names (pinn.sym_loss.GENERATORS); the symmetry loss mu * L_sym is only computed
     and added when sym is given AND mu > 0, so mu = 0 reproduces the run without it exactly.
     g_wd: weight-decay baseline, adds g_wd * (sum of squared parameters of the learned g) to the loss; it is only
     computed when g_wd > 0 and g is learned, so g_wd = 0 reproduces the run without it exactly.
     gen: (V, scale) for the GENERAL symmetry loss (pinn.sym_general): V = unit generator vectors in normalised
-    coordinates, scale = fixed column scales; used instead of sym when given (with mu > 0)."""
+    coordinates, scale = fixed column scales; used instead of sym when given (with mu > 0).
+    learn_gen: the non-zero components of V are trained together with the network, g and nu (LearnableGen)."""
     if g_model is not None:
         torch.manual_seed(seed)
         if isinstance(g_model, str):
@@ -44,7 +45,10 @@ def train_pinn(x_obs, t_obs, u_obs, g_fun, lam=1.0, n_colloc=2000,seed=0,
         return data, torch.mean(res**2)
     use_sym = (bool(sym) or gen is not None) and mu > 0
     sym_hist = []
+    gen_mod = LearnableGen(gen[0]) if (gen is not None and learn_gen and use_sym) else None
     def sym_term():
+        if gen_mod is not None:
+            return sym_loss_general(network_jets(model, xc, tc), g_fun, nu_now(), gen_mod(), gen[1])
         if gen is not None:
             return sym_loss_general(network_jets(model, xc, tc), g_fun, nu_now(), *gen)
         return sym_loss(model, g_fun, nu_now(), xc, tc, sym, detach=sym_detach)
@@ -58,7 +62,8 @@ def train_pinn(x_obs, t_obs, u_obs, g_fun, lam=1.0, n_colloc=2000,seed=0,
         norm = lambda gs: torch.sqrt(sum((g**2).sum() for g in gs)).item()
 
         return norm(gd), norm(gr)
-    all_params = list(model.parameters()) + ([log_nu] if learn_nu else []) + (list(g_model.parameters()) if g_model is not None else [])
+    all_params = list(model.parameters()) + ([log_nu] if learn_nu else []) + (list(g_model.parameters()) if g_model is not None else []) \
+        + (list(gen_mod.parameters()) if gen_mod is not None else [])
     opt = torch.optim.Adam(all_params, lr=1e-3)
     sched = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=adam_steps, eta_min=1e-5) if cos else None
     for step in range(adam_steps):
@@ -108,6 +113,7 @@ def train_pinn(x_obs, t_obs, u_obs, g_fun, lam=1.0, n_colloc=2000,seed=0,
     model.nu_hat = float(nu_now().detach()) if learn_nu else NU
     model.extras = {"g_model":g_model, "sym": sym if use_sym else None, "mu": mu if use_sym else 0.0,
                     "sym_hist": sym_hist, "sym_final": s_final,
+                    "gen_final": gen_mod().detach().numpy().tolist() if gen_mod is not None else None,
                     "g_wd": g_wd if use_wd else 0.0}
     return model, final, history, grad_his
 
@@ -144,6 +150,8 @@ if __name__ == "__main__":
                     help="hold out all observation points with t > this value (never trained on; error stored)")
     ap.add_argument("--gen-file", default=None,
                     help="npz with V (unit vectors) and scale for the general symmetry loss (discovery.make_gen_file); needs --mu")
+    ap.add_argument("--learn-gen", action="store_true",
+                    help="train the non-zero components of the generator(s) in --gen-file together with the model")
     args = ap.parse_args()
     steps = args.steps
     smoke = args.smoke
@@ -174,7 +182,7 @@ if __name__ == "__main__":
                                 from pathlib import Path
                                 gf = np.load(args.gen_file)
                                 gen = (gf["V"], gf["scale"])
-                                sym_tag = f"_gen{Path(args.gen_file).stem}_mu{args.mu:g}"
+                                sym_tag = f"_gen{Path(args.gen_file).stem}_mu{args.mu:g}" + ("_lg" if args.learn_gen else "")
                             ho_tag = f"_ho{args.holdout:g}" if args.holdout is not None else ""
                             wd_tag = f"_wd{args.g_wd:g}" if args.g_wd > 0 and args.g_model is not None else ""
                             stem = f"oracle_{name}_N{n_obs}_s{sig}_lam{tag}_k{k}{var}{mis}{nutag}{g_tag}{ho_tag}{sym_tag}{wd_tag}_seed{seed}"
@@ -193,7 +201,8 @@ if __name__ == "__main__":
                                 g_loss, lam=lam, adam_steps=steps, seed=seed, verbose=False,
                                 n_colloc=args.ncolloc, cos=args.cos, K=args.feat,learn_nu = learn_nu is not None,
                                 nu0 = learn_nu if learn_nu is not None else 0.05,g_model=g_model,
-                                sym=gens, mu=args.mu, g_wd=args.g_wd, gen=gen)
+                                sym=gens, mu=args.mu, g_wd=args.g_wd, gen=gen,
+                                learn_gen=args.learn_gen)
                             g = model.extras["g_model"]
                             if not smoke:
                                 torch.save(model.state_dict(), MODELS / f"{stem}.pt")
@@ -238,6 +247,8 @@ if __name__ == "__main__":
                                  "holdout": args.holdout, "n_hold": int(hold.sum()),
                                  "err_hold": err_hold, "err_hold_clean": err_hold_clean,
                                  "gen_file": args.gen_file if gen is not None else None,
+                                 "learn_gen": bool(args.learn_gen and gen is not None),
+                                 "gen_final": model.extras["gen_final"],
                                  }
                             if not m["lbfgs_ran"] or m["underfit"]:
                                 ratio = m["data_over_noise"]

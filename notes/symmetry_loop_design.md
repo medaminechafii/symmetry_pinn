@@ -243,3 +243,57 @@ Smoke tests (Mac, 50 Adam steps, not results): all paths run (baseline, SVD, acc
 One observation to watch in the real runs: in a 50-step cubic noise-free test the first candidate was within
 res 0.02 of scaling but gave R = 3.3 (rejected). Likely the under-trained models, but an inexact candidate enforced
 with mu = 1 could also be rejected in the real runs (risk in section 6; cleaning 2.3 would be the fix).
+
+## 11. First loop results and the cleaning test (2026-11-27)
+Ubuntu run (uncleaned, partial): cubic candidate 1 is close to scaling (res 0.04-0.13; 0.40 once) but REJECTED in 5 of 6
+chains (R 4.3-19 noise-free, 1.7-4.3 at 1%; one accepted at 1.04). Exact scaling in the pilot: 0.05-0.15 / ~0.95.
+Wrong candidates (res ~1) correctly rejected (R 1.2-5515). g0: candidate 1 is a mixture of true symmetries (span3
+0.004-0.08), accepted in all 5 finished first steps (R 0.39-1.005).
+Data-free cleaning check (discovery/clean_check.py, thr 0.1): cubic candidate 1 -> exactly xi:x, tau:t, phi:u kept,
+res 0.009-0.018 (raw 0.035-0.133) in 5 of 6 chains; kept ratios 0.49-0.50 : 1 : -0.51..-0.53 (exact 0.5 : 1 : -0.5).
+Training test on the Mac (--clean 0.1, cubic k0, pass 1; Mac retrains its own baselines, so not identical to ubuntu):
+| | res raw -> cleaned | R cleaned (ubuntu raw R) | c of the candidate run |
+| noise-free | 0.065 -> 0.008 | 2.37 (19.4) | c3 -1.011, c5 0.066 |
+| 1% | 0.127 -> 0.017 | 2.15 (1.72), R_clean 27 | c3 -0.876, c5 0.108 |
+Still rejected. Cleaning removes the extra components but not the ~4% error in phi:u. For u_t + u u_x = nu u_xx + g a
+generator a x d/dx + b t d/dt + c u d/du can only be a symmetry if b = 2a and c = -a (u_t, u u_x, nu u_xx must scale
+alike); with c = -1.04 a no g works, so the loss still bends g_hat (c5 not cleared, c3 off at 1%).
+
+### 11.1 Full ubuntu run (24 chains, uncleaned, 2026-11-27)
+Accepted per chain (k = 0, 1, 2):
+| data | expected | noise-free | 1% |
+|---|---|---|---|
+| cubic | 1 (scaling) | 0, 0, 0 | 0, 0, 1 |
+| g0 | up to 3 | 1, 1, 1 (mixture of Gal./proj.; scaling cand. rejected R 27-30) | 2, 3, 3 (k1, k2: all three, res 0.02-0.07) |
+| eps 0.1 | 0 | 0, 0, 0 | 0, 0, 0 |
+| eps 0.03 | 0 (probably 1) | 0, 0, 0 | 0, 0, 1 |
+Scaling-like candidate 1, noise-free (res to scaling -> R):
+  cubic (TRUE):    0.08 -> 19.4,  0.04 -> 7.0,  0.05 -> 4.3
+  eps 0.03 (false): 0.11 -> 25.3, 0.04 -> 3.6,  0.17 -> 21.3
+  eps 0.1 (false):  0.23 -> 77.3, 0.12 -> 12.7, 0.25 -> 44.4
+-> R grows with the candidate's distance from scaling, whether scaling is true or not. A higher noise-free threshold
+cannot separate them: cubic true up to 19.4, eps 0.1 false from 12.7. At this candidate accuracy (4-15 deg) the test
+cannot tell "true but inexact" from "false but near".
+eps 0.1: correctly 0 accepted everywhere (but cubic also mostly 0, so not yet evidence of discrimination).
+g0 at 1% works best: true candidates R 0.99-1.09, wrong ones 1.9-20.
+Next proposed: trainable candidate coefficients (option b): with the support fixed to the cleaned components, the
+PDE terms alone force exact ratios (b = 2a, c = -a for scaling), so a true candidate should become exact (R -> pilot
+0.05-0.15), while for eps 0.1 the source term cannot follow (R should stay high).
+
+## 12. Learnable candidate coefficients + drift limit (Mac test, 2026-11-26/27, noise-free, one data draw each)
+Code: pinn.sym_general.LearnableGen (non-zero components of the cleaned/sparsified candidate trained with the model,
+renormalised every step); sym_loop --prep clean|sparse --learn --max-drift 10 (reject if the trained vector moved
+> 10 deg: it was replaced, not corrected) + duplicate check after training. Chains run before the drift rule was
+added were re-evaluated with it from their logs.
+| chain | accepted (new rules) | what |
+|---|---|---|
+| cubic k0, clean | 1 | exact scaling (res 0.000, drift 0.5 deg, R 0.042; was R 19.4 without learning) |
+| cubic k0, sparse | 0 | rotation put a wrong vector first; scaling only reached by a 41 deg drift (rejected) |
+| eps 0.1 k1, clean | 0 | candidate trained to EXACT scaling (drift 1.7 deg) -> R 2325 (was 12.7) |
+| eps 0.1 k1, sparse | 0 | R 49268 / 2057 |
+| g0 k0, clean | 2 | a Gal./proj. mixture + exact scaling; final g_hat = 0, nu err 0.005% (base 0.136%) |
+| g0 k0, sparse | 3 | exact scaling, exact Galilean, exact projective (res 0.000 each; drift 2.5, 9.4, 0.0 deg); final g_hat = 0, nu err 0.002% |
+Key point: refining the candidate removes the overlap between "true but inexact" and "false but near": the true
+candidate becomes exact and fits (R 0.04), the false one becomes exact scaling and cannot fit the +0.1u term (R 2325).
+Drift: good corrections 0.0-9.4 deg, replacements 12-90 deg; the 10 deg limit is a choice (9.4 and 12.5 are close).
+Clean is better for cubic, sparse for g0 (mixtures). Open: noise (1%), all draws, choice/union of clean and sparse.

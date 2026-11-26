@@ -52,6 +52,21 @@ def unit(W, scale):
     return V / np.linalg.norm(V, axis=1, keepdims=True)
 
 
+class LearnableGen(torch.nn.Module):
+    """Learnable candidate generators (loop option --learn): the components that are non-zero in the starting vectors
+    (the support, fixed by cleaning / sparsification) are trainable, all others stay exactly 0; every row is
+    renormalised to length 1 at each call, so the loss cannot shrink v to 0."""
+    def __init__(self, V0):
+        super().__init__()
+        V0 = torch.as_tensor(np.atleast_2d(V0), dtype=torch.float64)
+        self.register_buffer("mask", (V0 != 0).double())
+        self.P = torch.nn.Parameter(V0.clone())
+
+    def forward(self):
+        V = self.P * self.mask
+        return V / V.norm(dim=1, keepdim=True)
+
+
 def sym_loss_general(jets, g_model, nu, V, scale):
     """mean over the m vectors of mean((A_n v)^2).  V: (m, 30) unit vectors in normalised coordinates."""
     A_n = columns(jets, g_model, nu) / torch.as_tensor(scale)
