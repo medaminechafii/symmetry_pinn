@@ -229,3 +229,17 @@ Saving: every training is saved (network, g_hat, nu_hat, split, generators), eve
 Development runs: 1 seed per candidate; final evaluation: candidates best of 2 seeds (section 8.1).
 Deferred: false symmetry after a true one (cubic scaling+Galilean / scaling+projective) now mainly tests the combined
 check of step d.
+
+## 10. Implementation (2026-11-27, branch loop-prototype)
+- discovery/sym_loop.py: one chain (name, N, sigma, k). Trainings via pinn.pinn_oracle (subprocess; existing runs are
+  skipped and read back, so the pilot baselines are reused). Column scales fixed from B for the whole chain.
+  Candidates: SVD of M's normalised columns restricted to the orthogonal complement of {d/dx, d/dt, accepted}
+  (exact projection instead of "drop the 2 smallest"). If only one symmetry is accepted in total, its own run is the
+  combined model (no duplicate training). Log: results/oracle/loop/<chain>.jsonl.
+- run_loop.sh: 24 chains (cubic, g0, cubic_e01, cubic_e003 x sigma 1, 0 x k 0-2), poly, defaults of section 9.
+- experiments/loop_summary.py: per chain R and decision of every candidate, combined checks, final nu error / c,
+  res of the true generators to the accepted span.
+Smoke tests (Mac, 50 Adam steps, not results): all paths run (baseline, SVD, accept, reject, combined, pass 2, stop).
+One observation to watch in the real runs: in a 50-step cubic noise-free test the first candidate was within
+res 0.02 of scaling but gave R = 3.3 (rejected). Likely the under-trained models, but an inexact candidate enforced
+with mu = 1 could also be rejected in the real runs (risk in section 6; cleaning 2.3 would be the fix).
