@@ -179,3 +179,15 @@ Same general loss (no new math), TRUE generators chosen by hand: scaling -> scal
 the order the loop would add them), then Galilean alone and projective alone (optional: which symmetry does the work).
 With several generators the loss is the MEAN over them, so each gets weight mu/m. Reference = better of 2 baseline seeds.
 Measures: R, err_g (true g = 0), nu error. 42 trainings. Runs after the MLP delta pilot (run_overnight.sh).
+
+### 8.3 Decision rule UPDATED (user, 2026-11-27, option a; after section 13 of week6 notes, before any loop run)
+Problem found: noise-free, once g_hat is exact the held-out error sits at the optimiser floor (1-5e-9) and moves by
+up to ~50% between runs; compared with the PREVIOUS model, 4 of 6 true later steps on g0 had R 1.16-1.49 (rejected).
+Rule (all rounds, sigma 1% and 0, poly and MLP): every candidate is compared with the BASELINE (better of 2 seeds,
+no symmetry loss), not with the previous model:
+    R = E(accepted symmetries + candidate) / E(best baseline),   accept if R <= 1.1.
+Pilot / g0 values with this rule: true steps 0.914-0.992 (1%), 0.010-0.119 (0%); Galilean on cubic 11-12 (1%), >= 380 (0%).
+Known weakness: if earlier true symmetries lowered the error a lot (noise-free: up to 100x), a later MILDLY false
+symmetry can raise it again and still stay below 1.1 x baseline. Very wrong ones are still caught.
+Deferred (user, for later): false symmetry AFTER a true one (cubic: scaling+Galilean, scaling+projective vs scaling;
+12 trainings) -> shows how large this weakness is. The eps data in the final evaluation test the mild case.

@@ -383,3 +383,26 @@ R = held-out error / held-out error of baseline seed 0 (E vs noisy observations;
   data; there c5 u^5 is blown up, which gave baseline err_g 0.07-0.78. Fixed to the data's u values (0.03-0.04 for the
   k = 0 baselines, checked from the printed coefficients). The other columns are unaffected.
 Caveats: 3 data draws per cell; only a very wrong false symmetry was tested. A nearly-true one (eps 0.1) is the real test.
+
+## 13. MLP delta pilot and g0 one symmetry at a time (2026-11-27, run_overnight.sh)
+### 13.1 MLP delta pilot (same cell as section 12; R recomputed with the fixed rule, reference = better of 2 seeds)
+| | sigma 1% | sigma 0% |
+|---|---|---|
+| scaling (true) | 0.967, 1.000, 0.928 | 0.157, 0.174, 0.074 |
+| Galilean (false) | 11, 11, 12 | 2952, 1542, 773 |
+Same picture as poly; delta = 0.1 separates them, but the margin is thin at 1% for k = 1 (R = 1.000; R_clean 0.50).
+MLP err_g: baselines 0.03-0.08, scaling 0.004-0.015, Galilean 0.999. Seed-1 baseline vs seed 0 up to 6x without noise.
+
+### 13.2 g0, true symmetries added one at a time (poly, general loss mu = 1, seed 0)
+- Every set that contains Galilean or projective gives g_hat = 0 to 4 decimals (err_g 0.0000). Scaling alone leaves only
+  c3 (|c3| <= 0.005; scaling allows u^3), err_g 0.0014-0.0048. Baselines: err_g 0.011-0.046 (c3, c5 up to 0.49).
+  So for g0 ONE of Galilean / projective already fixes g completely; adding more symmetries gives no further gain in g.
+- nu error: baselines 0.01-0.49%, with symmetries 0.00-0.39%.
+- R (vs better baseline) < 1 for every symmetry run at both noise levels (1%: 0.914-0.992; 0%: 0.010-0.119) -> all would
+  be accepted as FIRST candidate.
+- PROBLEM for later rounds, noise-free: each step compared with the previous one (the loop's comparison):
+  +Galilean vs scaling: 0.43, 1.20, 1.25; +projective vs scaling+Galilean: 1.49, 1.16, 0.99 (k = 0, 1, 2).
+  4 of 6 true steps are above 1.1 -> they would be REJECTED. At 1% these ratios are 0.995-1.001 (fine).
+  Reason: once g is exact, the noise-free held-out error sits at the optimiser floor (1-5e-9) and differs from run to run
+  by up to about 50%; R then measures optimiser luck, not the symmetry. Delta from the pilot (first candidate vs baseline)
+  does not cover this situation. To be decided BEFORE the loop runs (allowed: no loop results seen yet).
