@@ -297,3 +297,24 @@ Key point: refining the candidate removes the overlap between "true but inexact"
 candidate becomes exact and fits (R 0.04), the false one becomes exact scaling and cannot fit the +0.1u term (R 2325).
 Drift: good corrections 0.0-9.4 deg, replacements 12-90 deg; the 10 deg limit is a choice (9.4 and 12.5 are close).
 Clean is better for cubic, sparse for g0 (mixtures). Open: noise (1%), all draws, choice/union of clean and sparse.
+
+## 13. Full run, tier 1 (ubuntu, 2026-11-26/27): poly, N 1000, noise 0 and 1%, k 0-2, learnable coefficients, drift 10 deg
+(python -m experiments.loop_eval --arm poly --N 1000; 48 chains, no crashes)
+| noise | prep | cubic acc (exp 1) | g0 acc (exp 3), all found | eps 0.1 false acc | eps 0.03 acc | err_g cubic | err_g g0 | nu err % cubic / g0 |
+|---|---|---|---|---|---|---|---|---|
+| 0 | clean | 1,1,1 | 3,3,2 (2/3) | 0/3 | 0,0,0 | 0.0228 -> 0.0024 | 0.0214 -> 0.0000 | 0.023->0.028 / 0.148->0.007 |
+| 0 | sparse | 0,1,1 | 3,0,3 (2/3) | 0/3 | 0,0,0 | 0.0228 -> 0.0042 | 0.0214 -> 0.0000 | 0.023->0.025 / 0.148->0.026 |
+| 1 | clean | 1,0,1 | 3,2,3 (2/3) | 0/3 | 0,0,0 | 0.0325 -> 0.0054 | 0.0201 -> 0.0001 | 0.423->0.243 / 0.361->0.126 |
+| 1 | sparse | 0,0,1 | 3,3,2 (2/3) | 0/3 | 0,0,0 | 0.0325 -> 0.0325 | 0.0201 -> 0.0000 | 0.423->0.283 / 0.361->0.103 |
+- No false acceptance in any of the 24 eps chains (eps 0.1 AND eps 0.03: the old SVD-gap test could not resolve 0.03).
+- Clean + learn: cubic scaling found in 5/6 draws; g0 complete in 4/6 (the others 2 of 3). err_g 6-10x smaller
+  for cubic, g0 g_hat -> 0; nu error smaller except cubic noise-free (already 0.02%).
+- Sparse is not better overall (cubic worse; g0 k1 noise-free 0 accepted). Clean + learn is the default from here.
+- To inspect: the misses (cubic s1 k1 clean, g0 s0 k2 clean, g0 s0 k1 sparse).
+
+## 14. Future experiments (user, 2026-11-27): other PDEs
+Planned for later (not started): (1) reaction-diffusion u_t = nu u_xx + g(u): g = -u^3 (scaling x d/dx + 2t d/dt - u d/du,
+fixed only by g, no u u_x term -> tests co-adaptation of learnable coefficients and g_hat), eps control g = -u^3 + 0.1u,
+optional heat equation g = 0 (many symmetries); (2) Fisher-KPP u_t = nu u_xx + u(1 - u): only d/dx, d/dt -> pure
+false-positive test (loop should accept nothing). Needs: solver without u u_x, new criterion columns, PINN residual
+form, true symmetries for evaluation. Run small tests on the Mac.

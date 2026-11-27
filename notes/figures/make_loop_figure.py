@@ -8,7 +8,9 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.patches import FancyBboxPatch, FancyArrowPatch, Polygon
 
+import sys
 OUT = Path(__file__).parent
+V2 = "--v2" in sys.argv          # current pipeline: candidates cleaned/sparsified, coefficients learnable, drift limit
 plt.rcParams.update({"font.family": "DejaVu Sans", "mathtext.fontset": "cm"})
 
 C = {  # (fill, edge) per region
@@ -70,7 +72,11 @@ path([(7.0, 14.5), (8.5, 14.5)])
 region(16.6, 9.6, 8.2, 7.6, "svd", "2. Propose candidates")
 box(17.1, 13.1, 7.2, 2.6, "symmetry condition",
     [r"$A(\hat u^{(3)};\,\hat g,\hat g',\hat\nu)\; v = 0$", r"30 basis fields $(\xi,\tau,\phi)$"], size=11)
-box(17.1, 10.2, 7.2, 2.0, "candidates  $v_1, v_2, \\ldots$", [r"drop $\partial_x,\partial_t$ and accepted"], size=11)
+if V2:
+    box(17.1, 10.0, 7.2, 2.4, "candidates  $v_1, v_2, \\ldots$",
+        [r"drop $\partial_x,\partial_t$ and accepted", "then clean or sparsify (few entries)"], size=10.5)
+else:
+    box(17.1, 10.2, 7.2, 2.0, "candidates  $v_1, v_2, \\ldots$", [r"drop $\partial_x,\partial_t$ and accepted"], size=11)
 path([(20.7, 13.1), (20.7, 12.2)])
 label(20.9, 12.65, "SVD", size=10.5)
 path([(15.6, 14.5), (17.1, 14.5)])
@@ -79,7 +85,8 @@ path([(15.6, 14.5), (17.1, 14.5)])
 region(25.8, 0.4, 10.8, 16.8, "test", "3. Test each candidate alone")
 box(26.3, 13.0, 9.3, 2.7, "train  $B$ + one candidate $v_j$",
     [r"$\mathcal{L}_{data} + \lambda\mathcal{L}_{PDE} + \mu\,\mathcal{L}_{sym}(v_j)$",
-     r"$\mathcal{L}_{sym}(v) = \mathrm{mean}\,(A_n v)^2$"], size=11)
+     r"$\mathcal{L}_{sym}(v) = \mathrm{mean}\,(A_n v)^2$"]
+    + (["non-zero entries of $v_j$ trained too"] if V2 else []), size=10.5 if V2 else 11)
 box(26.3, 10.4, 9.3, 1.8, "held-out test", [r"$R_j = E_{v_j}\,/\,E_B$"], size=11)
 path([(30.95, 13.0), (30.95, 12.2)])
 path([(24.3, 11.2), (25.3, 11.2), (25.3, 14.35), (26.3, 14.35)])
@@ -87,9 +94,10 @@ path([(24.3, 11.2), (25.3, 11.2), (25.3, 14.35), (26.3, 14.35)])
 dx, dy = 29.0, 8.0
 ax.add_patch(Polygon([(dx - 2.4, dy), (dx, dy + 1.4), (dx + 2.4, dy), (dx, dy - 1.4)], closed=True,
                      fc="white", ec=DARK, lw=1.1, zorder=2))
-ax.text(dx, dy, r"$R_j \leq 1+\delta$ ?", ha="center", va="center", fontsize=12.5, zorder=3)
+ax.text(dx, dy, r"$R_j \leq 1+\delta$" + ("\n" + r"and drift $\leq 10^\circ$ ?" if V2 else " ?"), ha="center",
+        va="center", fontsize=11 if V2 else 12.5, zorder=3)
 path([(dx, 10.4), (dx, dy + 1.4)])
-box(32.6, 8.7, 3.0, 1.5, "accept", ["keep $v_j$"], size=11, ec="#3B6D11", fc="#F2F8EC")
+box(32.6, 8.7, 3.0, 1.5, "accept", ["keep trained $v_j$" if V2 else "keep $v_j$"], size=11, ec="#3B6D11", fc="#F2F8EC")
 box(32.6, 5.8, 3.0, 1.5, "reject", ["discard"], size=11, ec="#A32D2D", fc="#FCEFEF")
 path([(dx + 2.4, dy), (31.9, dy), (31.9, 9.45), (32.6, 9.45)], color="#3B6D11")
 path([(31.9, dy), (31.9, 6.55), (32.6, 6.55)], color="#A32D2D")
@@ -117,8 +125,9 @@ label(23.3, 9.1, "next pass:  SVD of the new $M$", color="#993556", size=10.5, h
 
 region(8.0, 0.4, 7.6, 8.2, "param", "Parameters (fixed)")
 for i, s in enumerate([r"$\delta = 0.1$,   $\mu = 1$", "baseline seeds: 2", "max_rejections: 2",
-                       "max_candidates: 5", "max_passes: 2", "all trainings from scratch,", "same seed and split"]):
-    label(8.6, 6.9 - i * 0.82, s, size=11.5)
+                       "max_candidates: 5", "max_passes: 2"] + (["max drift: 10 deg, clean thr 0.1"] if V2 else [])
+                      + ["all trainings from scratch,", "same seed and split"]):
+    label(8.6, 6.9 - i * (0.74 if V2 else 0.82), s, size=11 if V2 else 11.5)
 
 region(0.4, 0.4, 6.6, 8.2, "out", "Output")
 box(0.9, 4.2, 5.6, 2.9, "learned equation", [r"$\hat g(u),\ \hat\nu$ of the last $M$"], size=11)
@@ -126,6 +135,7 @@ box(0.9, 1.0, 5.6, 2.6, "found symmetries", [r"accepted $\{v_i\}_{i=1}^{d}$"], s
 path([(30.95, 1.0), (30.95, -0.25), (3.7, -0.25), (3.7, 0.4)], color="#6E9F45")
 label(17.0, -0.5, "no:  stop", color="#6E9F45", size=10.5)
 
-fig.savefig(OUT / "symmetry_loop.png", dpi=200, bbox_inches="tight", facecolor="white")
-fig.savefig(OUT / "symmetry_loop.pdf", bbox_inches="tight", facecolor="white")
-print("wrote", OUT / "symmetry_loop.png")
+name = "symmetry_loop_v2" if V2 else "symmetry_loop"
+fig.savefig(OUT / f"{name}.png", dpi=200, bbox_inches="tight", facecolor="white")
+fig.savefig(OUT / f"{name}.pdf", bbox_inches="tight", facecolor="white")
+print("wrote", OUT / f"{name}.png")
