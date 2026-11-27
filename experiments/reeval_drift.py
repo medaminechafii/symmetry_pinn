@@ -4,6 +4,7 @@ chain have accepted with a different acceptance rule?
     rule "logged"   as run:  R <= 1 + delta  and  drift <= 10 deg  and  not a duplicate
     rule "nodrift"  proposed: R <= 1 + delta  and  not a duplicate        (drift ignored)
 
+Only the chains run with the 10 deg limit (chains with "_mdX" in their name already ran without it).
 Uses only the logged pass-1 candidates (trained vector v_final, R, drift). Limits:
   - pass 2 and the combined training depend on what was accepted, so they are NOT re-evaluated;
   - the loop stops a pass after 2 rejections; if rule "nodrift" would have accepted one of those, the pass would have
@@ -52,7 +53,7 @@ if __name__ == "__main__":
     cells = {}
     for f in sorted((RESULTS / "oracle" / "loop").glob("*_lg.jsonl")):
         m = PAT.match(f.stem)
-        if not m or m["ad"] or (a.arm and m["arm"] != a.arm) or (a.N and int(m["N"]) != a.N):
+        if not m or m["ad"] or m["md"] or (a.arm and m["arm"] != a.arm) or (a.N and int(m["N"]) != a.N):
             continue
         steps = [json.loads(l) for l in open(f)]
         cands = [d for d in steps if d["step"] == "candidate" and d["p"] == 1 and "v_final" in d]

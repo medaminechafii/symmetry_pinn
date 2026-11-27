@@ -162,7 +162,8 @@ if __name__ == "__main__":
         a.prep, a.thr = "clean", a.clean
 
     chain = f"{a.name}_N{a.N}_s{a.sig}_k{a.k}_{a.arm}_ho{a.holdout:g}" + (f"_ad{a.steps}" if a.steps != 4000 else "") \
-        + {"none": "", "clean": f"_cl{a.thr:g}", "sparse": f"_sp{a.thr:g}"}[a.prep] + ("_lg" if a.learn else "")
+        + {"none": "", "clean": f"_cl{a.thr:g}", "sparse": f"_sp{a.thr:g}"}[a.prep] \
+        + (f"_md{a.max_drift:g}" if a.learn and a.max_drift != 10 else "") + ("_lg" if a.learn else "")
     LOOP_DIR.mkdir(parents=True, exist_ok=True); GENS_DIR.mkdir(parents=True, exist_ok=True)
     log_path = LOOP_DIR / f"{chain}.jsonl"
     log_path.unlink(missing_ok=True)

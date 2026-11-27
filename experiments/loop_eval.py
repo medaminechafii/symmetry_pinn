@@ -8,7 +8,8 @@ One row per cell (arm, N, sigma, preparation, data set); the 3 data draws k = 0,
     err_g      median over draws, baseline -> final model: RMS(g_hat - g_true) / RMS(u^3) at the data's u values
     nu err     median over draws, baseline -> final model, in %
 Only chains of the new method (learnable coefficients, *_lg) unless --all. Unfinished chains are counted separately.
-Chains that ran before the drift rule existed are evaluated as they were logged.
+Chains that ran before the drift rule existed are evaluated as they were logged. Chains run with another drift limit
+(sym_loop --max-drift X, X != 10) carry "_mdX" in their name and are shown as separate cells ("clean+learn md180").
 
     python -m experiments.loop_eval
     python -m experiments.loop_eval --arm poly --N 1000
@@ -18,7 +19,7 @@ import numpy as np
 from pinn.surrogate import RESULTS
 
 PAT = re.compile(r"^(?P<name>.+)_N(?P<N>\d+)_s(?P<sig>\d+)_k(?P<k>\d)_(?P<arm>poly|MLP)_ho(?P<ho>[\d.]+)"
-                 r"(?P<ad>_ad\d+)?(?P<prep>_cl[\d.]+|_sp[\d.]+)?(?P<lg>_lg)?$")
+                 r"(?P<ad>_ad\d+)?(?P<prep>_cl[\d.]+|_sp[\d.]+)?(?P<md>_md[\d.]+)?(?P<lg>_lg)?$")
 EXPECTED = {"cubic": "1", "g0": "3", "cubic_e01": "0", "cubic_e003": "0/1"}
 ORDER = {"cubic": 0, "g0": 1, "cubic_e01": 2, "cubic_e003": 3}
 PREP = lambda p: "none" if not p else ("clean" if p.startswith("_cl") else "sparse")
@@ -47,10 +48,10 @@ if __name__ == "__main__":
         if not res:
             unfinished += 1
             continue
-        key = (m["arm"], int(m["N"]), int(m["sig"]), PREP(m["prep"]) + ("+learn" if m["lg"] else ""), m["name"])
+        key = (m["arm"], int(m["N"]), int(m["sig"]), PREP(m["prep"]) + ("+learn" if m["lg"] else "") + (f" md{m['md'][3:]}" if m["md"] else ""), m["name"])
         cells.setdefault(key, []).append((int(m["k"]), res[0]))
 
-    head = (f"{'arm':4s} {'N':>4s} {'sig':>3s} {'prep':12s} {'data':10s} | {'acc (k0,k1,k2)':14s} exp | "
+    head = (f"{'arm':4s} {'N':>4s} {'sig':>3s} {'prep':18s} {'data':10s} | {'acc (k0,k1,k2)':14s} exp | "
             f"{'true found':10s} {'worst res':>9s} | {'false acc':9s} | {'err_g base -> final':19s} | nu err % base -> final")
     print(head); print("-" * len(head))
     last = None
@@ -72,6 +73,6 @@ if __name__ == "__main__":
         eg = (f"{med([r.get('err_g_base') for _, r in runs]):7.4f} -> {med([r.get('err_g') for _, r in runs]):7.4f}"
               if all("err_g" in r for _, r in runs) else f"{'(not logged)':19s}")
         nu = f"{100 * med([r['nu_err_base'] for _, r in runs]):.3f} -> {100 * med([r['nu_err'] for _, r in runs]):.3f}"
-        print(f"{arm:4s} {N:4d} {sig:3d} {prep:12s} {name:10s} | {acc:14s} {EXPECTED.get(name, '?'):3s} | "
+        print(f"{arm:4s} {N:4d} {sig:3d} {prep:18s} {name:10s} | {acc:14s} {EXPECTED.get(name, '?'):3s} | "
               f"{found:10s} {worst_txt} | {false_txt} | {eg:19s} | {nu}")
     print(f"\n{sum(len(v) for v in cells.values())} finished chains in {len(cells)} cells; {unfinished} unfinished")
